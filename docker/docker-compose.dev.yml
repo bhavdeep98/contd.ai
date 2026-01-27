@@ -1,0 +1,14 @@
+# Development override - mounts source code for hot reload
+version: '3.8'
+
+services:
+  contd-api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.dev
+    volumes:
+      - ../contd:/app/contd:ro
+    environment:
+      - CONTD_LOG_LEVEL=DEBUG
+      - CONTD_DEV_MODE=true
+    command: ["python", "-m", "uvicorn", "contd.api.server:app", "--host", "0.0.0.0", "--port", "8080", "--reload"]
