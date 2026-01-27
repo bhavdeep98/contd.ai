@@ -119,3 +119,36 @@ CREATE TABLE snapshots (
 
 CREATE INDEX idx_snapshots_workflow ON snapshots(workflow_id, last_event_seq DESC);
 CREATE INDEX idx_snapshots_org ON snapshots(org_id);
+
+-- 1.5 Webhooks
+CREATE TABLE webhooks (
+    webhook_id UUID PRIMARY KEY,
+    org_id UUID NOT NULL REFERENCES organizations(org_id),
+    url TEXT NOT NULL,
+    events TEXT NOT NULL,              -- JSON array of event types
+    secret_hash VARCHAR(64) NOT NULL,
+    description TEXT,
+    headers TEXT,                      -- JSON object of custom headers
+    enabled BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_webhooks_org ON webhooks(org_id);
+CREATE INDEX idx_webhooks_enabled ON webhooks(org_id, enabled);
+
+CREATE TABLE webhook_deliveries (
+    delivery_id UUID PRIMARY KEY,
+    webhook_id UUID NOT NULL REFERENCES webhooks(webhook_id) ON DELETE CASCADE,
+    event_type VARCHAR(50) NOT NULL,
+    payload JSONB NOT NULL,
+    response_status INT,
+    response_body TEXT,
+    duration_ms INT,
+    success BOOLEAN DEFAULT FALSE,
+    attempt INT DEFAULT 1,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_webhook_deliveries_webhook ON webhook_deliveries(webhook_id, created_at DESC);
+CREATE INDEX idx_webhook_deliveries_success ON webhook_deliveries(webhook_id, success);

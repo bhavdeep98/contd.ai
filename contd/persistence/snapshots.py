@@ -198,13 +198,13 @@ class SnapshotStore:
     
     def _cleanup_old_snapshots(self, workflow_id: str, org_id: str):
         """Remove old snapshots beyond retention limit."""
-        # Get snapshots to delete
+        # Get snapshots to delete (use LIMIT with OFFSET for SQLite compatibility)
         old_snapshots = self.db.query("""
             SELECT snapshot_id, state_s3_key
             FROM snapshots
             WHERE workflow_id = ? AND org_id = ?
             ORDER BY last_event_seq DESC
-            OFFSET ?
+            LIMIT -1 OFFSET ?
         """, workflow_id, org_id, self.MAX_SNAPSHOTS_PER_WORKFLOW)
         
         for row in (old_snapshots or []):

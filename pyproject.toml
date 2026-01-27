@@ -1,0 +1,72 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "contd"
+version = "0.1.0"
+description = "Durable workflow execution engine with time-travel debugging"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "Contd Team"}
+]
+keywords = ["workflow", "durable", "execution", "time-travel", "debugging"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    "click>=8.0",
+    "requests>=2.28",
+    "fastapi>=0.100",
+    "uvicorn>=0.23",
+    "python-jose[cryptography]>=3.3",
+    "passlib[bcrypt]>=1.7",
+    "python-multipart>=0.0.6",
+    "httpx>=0.24",
+    "pydantic>=2.0",
+]
+
+[project.optional-dependencies]
+postgres = ["psycopg2-binary>=2.9"]
+redis = ["redis>=4.0"]
+s3 = ["boto3>=1.26"]
+observability = [
+    "opentelemetry-api>=1.20",
+    "opentelemetry-sdk>=1.20",
+    "prometheus-client>=0.17",
+]
+all = [
+    "contd[postgres,redis,s3,observability]",
+]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+    "pytest-cov>=4.0",
+]
+
+[project.scripts]
+contd = "contd.cli.main:main"
+
+[project.urls]
+Homepage = "https://github.com/contd/contd"
+Documentation = "https://docs.contd.ai"
+Repository = "https://github.com/contd/contd"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["contd*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
