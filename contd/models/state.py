@@ -3,6 +3,9 @@ from datetime import datetime
 def utcnow():
     return datetime.utcnow()
 
+from dataclasses import dataclass, asdict
+from typing import Dict, Any, Optional
+
 @dataclass(frozen=True)
 class WorkflowState:
     workflow_id: str
@@ -11,9 +14,9 @@ class WorkflowState:
     metadata: Dict[str, Any]   # System metadata
     version: str     # Schema version
     checksum: str    # Integrity check
+    org_id: Optional[str] = None # Added for multi-tenancy
 
     def to_dict(self):
-        from dataclasses import asdict
         return asdict(self)
 
     @staticmethod

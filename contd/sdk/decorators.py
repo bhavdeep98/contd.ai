@@ -218,6 +218,7 @@ def step(config: StepConfig | None = None):
             ctx.engine.journal.append(StepIntentionEvent(
                 event_id=generate_id(),
                 workflow_id=ctx.workflow_id,
+                org_id=ctx.org_id,
                 timestamp=utcnow(),
                 step_id=step_id,
                 step_name=fn.__name__,
@@ -239,6 +240,7 @@ def step(config: StepConfig | None = None):
                 ctx.engine.journal.append(StepFailedEvent(
                     event_id=generate_id(),
                     workflow_id=ctx.workflow_id,
+                    org_id=ctx.org_id,
                     timestamp=utcnow(),
                     step_id=step_id,
                     attempt_id=attempt_id,
@@ -278,6 +280,7 @@ def step(config: StepConfig | None = None):
             ctx.engine.journal.append(StepCompletedEvent(
                 event_id=generate_id(),
                 workflow_id=ctx.workflow_id,
+                org_id=ctx.org_id,
                 timestamp=utcnow(),
                 step_id=step_id,
                 attempt_id=attempt_id,

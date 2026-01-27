@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Any
 from psycopg2 import IntegrityError  # Assuming typical pg driver, or catch generic Exception if preferred
 
 def utcnow():
@@ -20,7 +20,7 @@ class LeaseManager:
     def __init__(self, db: Any):
         self.db = db
 
-    def acquire(self, workflow_id: str, owner_id: str) -> Optional[Lease]:
+    def acquire(self, workflow_id: str, owner_id: str, org_id: str = "default") -> Optional[Lease]:
         """
         Acquire lease or fail.
         Returns: Lease with fencing token, or None if held by another.
@@ -35,10 +35,10 @@ class LeaseManager:
             # I will use `?` as per spec to match user intent, assuming adapter handles it.
             token = self.db.execute("""
                 INSERT INTO workflow_leases 
-                (workflow_id, owner_id, acquired_at, lease_expires_at, fencing_token, heartbeat_at)
-                VALUES (?, ?, ?, ?, 1, ?)
+                (workflow_id, org_id, owner_id, acquired_at, lease_expires_at, fencing_token, heartbeat_at)
+                VALUES (?, ?, ?, ?, ?, 1, ?)
                 RETURNING fencing_token
-            """, workflow_id, owner_id, now, expires_at, now)
+            """, workflow_id, org_id, owner_id, now, expires_at, now)
             
             # Assuming execute returns result for RETURNING or db.execute returns a cursor/result
             # If db.execute returns nothing, we need fetchone logic. 
@@ -64,9 +64,10 @@ class LeaseManager:
                 fencing_token = fencing_token + 1,
                 heartbeat_at = ?
             WHERE workflow_id = ?
+              AND org_id = ?
               AND lease_expires_at < ?
             RETURNING fencing_token
-        """, owner_id, now, expires_at, now, workflow_id, now)
+        """, owner_id, now, expires_at, now, workflow_id, org_id, now)
         
         if result:
             token = result[0] if isinstance(result, (list, tuple)) else result

@@ -1,0 +1,99 @@
+syntax = "proto3";
+
+package contd.v1;
+
+service WorkflowService {
+  rpc StartWorkflow (StartWorkflowRequest) returns (StartWorkflowResponse);
+  rpc GetWorkflowStatus (GetWorkflowStatusRequest) returns (GetWorkflowStatusResponse);
+  rpc ResumeWorkflow (ResumeWorkflowRequest) returns (ResumeWorkflowResponse);
+  rpc ListSavepoints (ListSavepointsRequest) returns (ListSavepointsResponse);
+  rpc TimeTravel (TimeTravelRequest) returns (TimeTravelResponse);
+  
+  // Admin operations
+  rpc ListWorkflows (ListWorkflowsRequest) returns (ListWorkflowsResponse);
+  rpc DeleteWorkflow (DeleteWorkflowRequest) returns (DeleteWorkflowResponse);
+}
+
+message StartWorkflowRequest {
+  string workflow_name = 1;
+  string input_json = 2;        // JSON encoded input
+  WorkflowConfig config = 3;
+}
+
+message WorkflowConfig {
+  string workflow_id = 1;       // Optional
+  int64 max_duration_seconds = 2;
+  map<string, string> tags = 3;
+}
+
+message StartWorkflowResponse {
+  string workflow_id = 1;
+}
+
+message GetWorkflowStatusRequest {
+  string workflow_id = 1;
+}
+
+message GetWorkflowStatusResponse {
+  string workflow_id = 1;
+  string status = 2;            // RUNNING, COMPLETED, FAILED
+  int32 step_number = 3;
+  string current_step = 4;
+}
+
+message ResumeWorkflowRequest {
+  string workflow_id = 1;
+}
+
+message ResumeWorkflowResponse {
+  string status = 1;
+}
+
+message ListSavepointsRequest {
+  string workflow_id = 1;
+}
+
+message Savepoint {
+  string savepoint_id = 1;
+  int32 step_number = 2;
+  string created_at = 3;
+  map<string, string> metadata = 4;
+}
+
+message ListSavepointsResponse {
+  repeated Savepoint savepoints = 1;
+}
+
+message TimeTravelRequest {
+  string workflow_id = 1;
+  string savepoint_id = 2;
+}
+
+message TimeTravelResponse {
+  string new_workflow_id = 1;
+}
+
+message ListWorkflowsRequest {
+  int32 limit = 1;
+  string next_token = 2;
+}
+
+message WorkflowSummary {
+  string workflow_id = 1;
+  string workflow_name = 2;
+  string created_at = 3;
+  string status = 4;
+}
+
+message ListWorkflowsResponse {
+  repeated WorkflowSummary workflows = 1;
+  string next_token = 2;
+}
+
+message DeleteWorkflowRequest {
+  string workflow_id = 1;
+}
+
+message DeleteWorkflowResponse {
+  bool success = 1;
+}

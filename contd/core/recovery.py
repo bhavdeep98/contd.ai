@@ -11,22 +11,23 @@ class HybridRecovery:
         self.journal = journal
         self.snapshots = snapshots
 
-    def restore(self, workflow_id: str) -> WorkflowState:
+    def restore(self, workflow_id: str, org_id: str) -> WorkflowState:
         """
         Deterministic restore from (snapshot + event replay)
         """
         # 1. Load latest snapshot
-        state, last_event_seq = self.snapshots.get_latest(workflow_id)
+        state, last_event_seq = self.snapshots.get_latest(workflow_id, org_id)
         
         if state is None:
             # No snapshot: full replay from genesis
             # Assuming genesis creates initial state or we return None/Initial
             # Spec called _restore_from_genesis(workflow_id)
-            return self._restore_from_genesis(workflow_id)
+            return self._restore_from_genesis(workflow_id, org_id)
         
         # 2. Get events after snapshot (ordered by event_seq)
         events = self.journal.get_events(
             workflow_id,
+            org_id=org_id,
             after_seq=last_event_seq,
             order_by="event_seq ASC"
         )
@@ -49,11 +50,11 @@ class HybridRecovery:
         
         return state
     
-    def _restore_from_genesis(self, workflow_id: str) -> WorkflowState:
+    def _restore_from_genesis(self, workflow_id: str, org_id: str) -> WorkflowState:
         # Create initial empty state
         # Usually workflow_started event holds initial params.
         # We need to fetch ALL events.
-        events = self.journal.get_events(workflow_id, after_seq=-1)
+        events = self.journal.get_events(workflow_id, org_id=org_id, after_seq=-1)
         if not events:
             # Raise or return default? 
             # If no events, workflow doesn't exist.
@@ -66,7 +67,8 @@ class HybridRecovery:
             variables={},
             metadata={},
             version="1.0",
-            checksum=""
+            checksum="",
+            org_id=org_id
         )
         
         for event in events:

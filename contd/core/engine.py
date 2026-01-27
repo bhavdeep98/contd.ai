@@ -37,8 +37,8 @@ class ExecutionEngine:
             cls._instance = ExecutionEngine()
         return cls._instance
     
-    def restore(self, workflow_id: str) -> WorkflowState:
-        return self.recovery.restore(workflow_id)
+    def restore(self, workflow_id: str, org_id: str) -> WorkflowState:
+        return self.recovery.restore(workflow_id, org_id)
 
     def complete_workflow(self, workflow_id: str):
         # Append WorkflowCompletedEvent

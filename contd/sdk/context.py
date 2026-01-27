@@ -38,6 +38,7 @@ def compute_checksum(state: WorkflowState) -> str:
 @dataclass
 class ExecutionContext:
     workflow_id: str
+    org_id: str
     workflow_name: str
     executor_id: str
     engine: ExecutionEngine
@@ -61,6 +62,7 @@ class ExecutionContext:
         cls,
         workflow_id: str | None,
         workflow_name: str,
+        org_id: str | None = None,
         tags: dict | None = None
     ) -> 'ExecutionContext':
         """Create new context or resume existing"""
@@ -77,8 +79,12 @@ class ExecutionContext:
         
         engine = ExecutionEngine.get_instance()
         
+        if not org_id:
+            org_id = "default"
+        
         ctx = cls(
             workflow_id=workflow_id,
+            org_id=org_id,
             workflow_name=workflow_name,
             executor_id=get_executor_id(),
             engine=engine,
@@ -100,7 +106,8 @@ class ExecutionContext:
                     "tags": tags or {}
                 },
                 version="1.0",
-                checksum=""
+                checksum="",
+                org_id=org_id
             )
             ctx._state.checksum = compute_checksum(ctx._state)
         
@@ -160,7 +167,8 @@ class ExecutionContext:
             variables=new_vars,
             metadata=self._state.metadata,
             version=self._state.version,
-            checksum="" # Will be computed later
+            checksum="", # Will be computed later
+            org_id=self.org_id
         )
         new_state.checksum = compute_checksum(new_state)
         return new_state
@@ -203,6 +211,7 @@ class ExecutionContext:
         self.engine.journal.append(SavepointCreatedEvent(
             event_id=generate_id(),
             workflow_id=self.workflow_id,
+            org_id=self.org_id,
             timestamp=utcnow(),
             savepoint_id=savepoint_id,
             step_number=self._state.step_number,

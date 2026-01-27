@@ -37,12 +37,13 @@ class EventJournal:
         
         self.db.execute("""
             INSERT INTO events (
-                event_id, workflow_id, event_seq, event_type,
+                event_id, workflow_id, org_id, event_seq, event_type,
                 payload, timestamp, schema_version, producer_version, checksum
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, 
             event.event_id,
             event.workflow_id,
+            event.org_id,
             event_seq,
             payload.get('event_type') or 'unknown', # Assuming event_type field or fallback
             canonical_str,
@@ -69,7 +70,7 @@ class EventJournal:
     def _compute_checksum(self, payload_str: str) -> str:
         return hashlib.sha256(payload_str.encode('utf-8')).hexdigest()
         
-    def get_events(self, workflow_id: str, after_seq: int = -1, order_by: str = "event_seq ASC") -> List[Any]:
+    def get_events(self, workflow_id: str, org_id: str = "default", after_seq: int = -1, order_by: str = "event_seq ASC") -> List[Any]:
         """
         Retrieve events for replay.
         """
@@ -77,10 +78,10 @@ class EventJournal:
         sql = f"""
             SELECT payload, event_type 
             FROM events 
-            WHERE workflow_id = ? AND event_seq > ?
+            WHERE workflow_id = ? AND org_id = ? AND event_seq > ?
             ORDER BY {order_by}
         """
-        rows = self.db.query(sql, workflow_id, after_seq)
+        rows = self.db.query(sql, workflow_id, org_id, after_seq)
         
         # Deserialize rows back to Event objects
         # We need a strict deserializer or just return dicts. Spec `HybridRecovery` expects objects (event.state_delta etc.)

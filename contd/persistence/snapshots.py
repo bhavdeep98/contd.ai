@@ -33,10 +33,10 @@ class SnapshotStore:
             # Store inline
             self.db.execute("""
                 INSERT INTO snapshots
-                (snapshot_id, workflow_id, step_number, last_event_seq, 
+                (snapshot_id, workflow_id, org_id, step_number, last_event_seq, 
                  state_inline, state_checksum, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, snapshot_id, state.workflow_id, state.step_number, 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, snapshot_id, state.workflow_id, state.org_id, state.step_number, 
                  last_event_seq, serialized, checksum, utcnow())
         else:
             # Store in S3
@@ -45,10 +45,10 @@ class SnapshotStore:
             
             self.db.execute("""
                 INSERT INTO snapshots
-                (snapshot_id, workflow_id, step_number, last_event_seq,
+                (snapshot_id, workflow_id, org_id, step_number, last_event_seq,
                  state_s3_key, state_checksum, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, snapshot_id, state.workflow_id, state.step_number,
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, snapshot_id, state.workflow_id, state.org_id, state.step_number,
                  last_event_seq, s3_key, checksum, utcnow())
         
         return snapshot_id
@@ -80,17 +80,17 @@ class SnapshotStore:
         
         return deserialize(serialized, cls=WorkflowState)
     
-    def get_latest(self, workflow_id: str) -> Tuple[Optional[WorkflowState], int]:
+    def get_latest(self, workflow_id: str, org_id: str = "default") -> Tuple[Optional[WorkflowState], int]:
         """
         Returns: (state, last_event_seq)
         """
         row = self.db.query("""
             SELECT snapshot_id, last_event_seq
             FROM snapshots
-            WHERE workflow_id = ?
+            WHERE workflow_id = ? AND org_id = ?
             ORDER BY last_event_seq DESC
             LIMIT 1
-        """, workflow_id)
+        """, workflow_id, org_id)
         
         if not row:
             return None, -1
