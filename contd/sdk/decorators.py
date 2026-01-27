@@ -11,8 +11,22 @@ from contd.sdk.types import RetryPolicy
 from contd.sdk.errors import WorkflowLocked
 from contd.models.serialization import compute_delta
 from contd.models.events import StepIntentionEvent, StepFailedEvent, StepCompletedEvent
+from contd.sdk.registry import WorkflowRegistry
 
 logger = logging.getLogger(__name__)
+
+# Lazy import to avoid circular dependency
+_metrics_collector = None
+
+def _get_collector():
+    global _metrics_collector
+    if _metrics_collector is None:
+        try:
+            from contd.observability.metrics import collector
+            _metrics_collector = collector
+        except ImportError:
+            _metrics_collector = None
+    return _metrics_collector
 
 P = ParamSpec('P')
 R = TypeVar('R')
@@ -23,6 +37,7 @@ class WorkflowConfig:
     max_duration: Optional[timedelta] = None
     retry_policy: Optional[RetryPolicy] = None
     tags: Optional[dict[str, str]] = None
+    org_id: Optional[str] = None
 
 def workflow(config: WorkflowConfig | None = None):
     """
@@ -31,21 +46,47 @@ def workflow(config: WorkflowConfig | None = None):
     def decorator(fn: Callable[P, R]) -> Callable[P, R]:
         @wraps(fn)
         def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+            workflow_start = time.time()
+            collector = _get_collector()
+            
             # Get or create workflow context
             ctx = ExecutionContext.get_or_create(
                 workflow_id=config.workflow_id if config else None,
+                org_id=config.org_id if config else None,
                 workflow_name=fn.__name__,
                 tags=config.tags if config else None
             )
             
+            # Emit workflow start metric
+            if collector:
+                collector.record_workflow_start(
+                    workflow_name=fn.__name__,
+                    trigger=ctx.tags.get('trigger', 'api') if ctx.tags else 'api'
+                )
+            
             # Acquire lease
+            lease_start = time.time()
             lease = ctx.engine.lease_manager.acquire(
                 ctx.workflow_id,
                 owner_id=ctx.executor_id
             )
             
             if not lease:
+                if collector:
+                    collector.record_lease_acquisition(
+                        workflow_name=fn.__name__,
+                        duration_ms=(time.time() - lease_start) * 1000,
+                        result="locked"
+                    )
                 raise WorkflowLocked(f"Workflow {ctx.workflow_id} locked by another executor")
+            
+            if collector:
+                collector.record_lease_acquisition(
+                    workflow_name=fn.__name__,
+                    duration_ms=(time.time() - lease_start) * 1000,
+                    result="acquired",
+                    owner_id=ctx.executor_id
+                )
             
             try:
                 # Start heartbeat background thread
@@ -53,9 +94,25 @@ def workflow(config: WorkflowConfig | None = None):
                 
                 # Check if resuming
                 if ctx.is_resuming():
+                    restore_start = time.time()
                     state = ctx.engine.restore(ctx.workflow_id)
+                    restore_duration = (time.time() - restore_start) * 1000
+                    
                     ctx.set_state(state)
                     logger.info(f"Resumed workflow {ctx.workflow_id} from step {state.step_number}")
+                    
+                    # Emit restore metrics
+                    if collector:
+                        # Count events replayed (approximate from step number)
+                        events_replayed = state.step_number * 2  # Rough estimate
+                        had_snapshot = hasattr(state, 'snapshot_id') and state.snapshot_id is not None
+                        
+                        collector.record_restore(
+                            workflow_name=fn.__name__,
+                            duration_ms=restore_duration,
+                            events_replayed=events_replayed,
+                            had_snapshot=had_snapshot
+                        )
                 
                 # Execute workflow
                 result = fn(*args, **kwargs)
@@ -63,7 +120,27 @@ def workflow(config: WorkflowConfig | None = None):
                 # Mark complete
                 ctx.engine.complete_workflow(ctx.workflow_id)
                 
+                # Emit completion metric
+                if collector:
+                    duration = time.time() - workflow_start
+                    collector.record_workflow_complete(
+                        workflow_name=fn.__name__,
+                        duration_seconds=duration,
+                        status="completed"
+                    )
+                
                 return result
+                
+            except Exception as e:
+                # Emit failure metric
+                if collector:
+                    duration = time.time() - workflow_start
+                    collector.record_workflow_complete(
+                        workflow_name=fn.__name__,
+                        duration_seconds=duration,
+                        status="failed"
+                    )
+                raise
                 
             finally:
                 ctx.stop_heartbeat()
@@ -72,6 +149,9 @@ def workflow(config: WorkflowConfig | None = None):
         # Attach metadata for introspection
         wrapper.__contd_workflow__ = True
         wrapper.__contd_config__ = config
+        
+        # Register workflow
+        WorkflowRegistry.register(fn.__name__, wrapper)
         
         return wrapper
     
@@ -100,6 +180,7 @@ def step(config: StepConfig | None = None):
         @wraps(fn)
         def wrapper(*args, **kwargs):
             ctx = ExecutionContext.current()
+            collector = _get_collector()
             
             # Generate step ID (deterministic from function name + position)
             step_id = ctx.generate_step_id(fn.__name__)
@@ -110,29 +191,20 @@ def step(config: StepConfig | None = None):
                 step_id
             ):
                 logger.info(f"Step {step_id} already completed, returning cached result")
-                # Need to update context state with cached result!
-                # Cached result is WorkflowState.
-                # If cached_result returns state, we set it.
+                
+                # Emit idempotency hit metric
+                if collector:
+                    collector.record_step_execution(
+                        workflow_name=ctx.workflow_name,
+                        step_name=fn.__name__,
+                        duration_ms=0,
+                        status="completed",
+                        was_cached=True,
+                        user_id=ctx.tags.get('user_id') if ctx.tags else None,
+                        plan_type=ctx.tags.get('plan_type', 'free') if ctx.tags else 'free'
+                    )
+                
                 ctx.set_state(cached_result)
-                return cached_result.variables # Return variables to user function usually?
-                # Wait, the workflow code expects `fn` result.
-                # If `fn` returns state/dict, we should return that.
-                # `check_completed` returns `WorkflowState`.
-                # We should probably return `state.variables` if user function expects dict, 
-                # OR return `state` if users pass state around.
-                # In examples: `state = search(state, query)`.
-                # So we should return the appropriate object.
-                # The prompt implies `state` (dict) is passed around. 
-                # But `check_completed` returns `WorkflowState`.
-                # For compatibility, this might need more robust typing or convention.
-                # We'll assume the user code works with `variable` dicts if that's what `fn` does.
-                # But the decorator expects `fn` to return something.
-                # We'll return `cached_result` (WorkflowState)?
-                # In example `state = fetch_order(state)`.
-                # `fetch_order` takes state (dict or obj) and returns state.
-                # If we return `WorkflowState`, user code might fail if it expects dict.
-                # But `ExecutionContext.extract_state` handles both.
-                # Let's return `cached_result` for now.
                 return cached_result 
 
             # Allocate attempt ID
@@ -161,6 +233,8 @@ def step(config: StepConfig | None = None):
                     result = fn(*args, **kwargs)
                     
             except Exception as e:
+                duration_ms = int((time.monotonic() - start_time) * 1000)
+                
                 # Log failure
                 ctx.engine.journal.append(StepFailedEvent(
                     event_id=generate_id(),
@@ -168,8 +242,20 @@ def step(config: StepConfig | None = None):
                     timestamp=utcnow(),
                     step_id=step_id,
                     attempt_id=attempt_id,
-                    error=str(e), # spec used error_type/msg, but StepFailedEvent def in models uses `error: str`
+                    error=str(e),
                 ))
+                
+                # Emit failure metric
+                if collector:
+                    collector.record_step_execution(
+                        workflow_name=ctx.workflow_name,
+                        step_name=fn.__name__,
+                        duration_ms=duration_ms,
+                        status="failed",
+                        was_cached=False,
+                        user_id=ctx.tags.get('user_id') if ctx.tags else None,
+                        plan_type=ctx.tags.get('plan_type', 'free') if ctx.tags else 'free'
+                    )
                 
                 # Apply retry policy
                 if cfg.retry and cfg.retry.should_retry(attempt_id, e):
@@ -186,7 +272,6 @@ def step(config: StepConfig | None = None):
             old_state = ctx.get_state()
             
             # Compute delta
-            # compute_delta expects dicts now based on my update to serialization.py
             delta = compute_delta(old_state.to_dict(), new_state.to_dict())
             
             # Write completion
@@ -201,7 +286,6 @@ def step(config: StepConfig | None = None):
             ))
             
             # Mark completed (idempotent)
-            # Added last_event_seq=0 placeholder as I discussed in idempotency.py step
             ctx.engine.idempotency.mark_completed(
                 ctx.workflow_id,
                 step_id,
@@ -212,6 +296,18 @@ def step(config: StepConfig | None = None):
             # Update context state
             ctx.set_state(new_state)
             ctx.increment_step()
+            
+            # Emit success metric
+            if collector:
+                collector.record_step_execution(
+                    workflow_name=ctx.workflow_name,
+                    step_name=fn.__name__,
+                    duration_ms=duration_ms,
+                    status="completed",
+                    was_cached=False,
+                    user_id=ctx.tags.get('user_id') if ctx.tags else None,
+                    plan_type=ctx.tags.get('plan_type', 'free') if ctx.tags else 'free'
+                )
             
             # Checkpoint if configured
             if cfg.checkpoint:
