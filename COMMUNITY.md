@@ -54,4 +54,5 @@ contact security@contd.ai.
 
 ## License
 
-Contd is open source under the [MIT License](LICENSE).
+Contd is source-available under the [Business Source License 1.1](LICENSE).
+Free for non-commercial use. Contact licensing@contd.ai for commercial licenses.
