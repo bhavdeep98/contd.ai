@@ -1,3 +1,3 @@
-from contd.sdk.decorators import workflow, step, savepoint
+from contd.sdk.decorators import workflow, step
 
-__all__ = ["workflow", "step", "savepoint"]
+__all__ = ["workflow", "step"]

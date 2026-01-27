@@ -215,6 +215,11 @@ process_memory_bytes = Gauge(
     ["memory_type"]  # rss, heap
 )
 
+process_cpu_usage_percent = Gauge(
+    "contd_process_cpu_usage_percent",
+    "Process CPU usage percentage"
+)
+
 # Critical errors
 critical_errors_total = Counter(
     "contd_critical_errors_total",
@@ -437,4 +442,7 @@ __all__ = [
     'workflow_success_rate',
     'checksum_validation_failures_total',
     'managed_steps_total',
+    # Export system metrics for background collector
+    'process_memory_bytes',
+    'process_cpu_usage_percent',
 ]

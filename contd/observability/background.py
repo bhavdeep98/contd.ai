@@ -6,12 +6,6 @@ import psutil
 import threading
 import time
 from typing import Optional
-from .metrics import (
-    process_memory_bytes,
-    process_cpu_usage_percent,
-    component_health_status,
-    database_connection_errors_total
-)
 
 
 class BackgroundCollector:
@@ -50,6 +44,9 @@ class BackgroundCollector:
     
     def _collect_system_metrics(self):
         """Collect system resource metrics"""
+        # Import here to avoid circular dependency
+        from .metrics import process_memory_bytes, process_cpu_usage_percent
+        
         # Memory
         mem_info = self.process.memory_info()
         process_memory_bytes.labels(memory_type='rss').set(mem_info.rss)
