@@ -5,10 +5,17 @@ from datetime import timedelta
 import time
 import traceback
 import logging
+import threading
+import signal
 
 from contd.sdk.context import ExecutionContext, utcnow, generate_id
 from contd.sdk.types import RetryPolicy
-from contd.sdk.errors import WorkflowLocked
+from contd.sdk.errors import (
+    WorkflowLocked, 
+    StepTimeout, 
+    TooManyAttempts,
+    StepExecutionFailed
+)
 from contd.models.serialization import compute_delta
 from contd.models.events import StepIntentionEvent, StepFailedEvent, StepCompletedEvent
 from contd.sdk.registry import WorkflowRegistry
@@ -33,7 +40,17 @@ R = TypeVar('R')
 
 @dataclass
 class WorkflowConfig:
-    workflow_id: Optional[str] = None      # Auto-generate if None
+    """
+    Configuration for @workflow decorator.
+    
+    Attributes:
+        workflow_id: Explicit workflow ID (auto-generated if None)
+        max_duration: Maximum workflow execution time
+        retry_policy: Default retry policy for steps
+        tags: Metadata tags for filtering/grouping
+        org_id: Organization ID for multi-tenancy
+    """
+    workflow_id: Optional[str] = None
     max_duration: Optional[timedelta] = None
     retry_policy: Optional[RetryPolicy] = None
     tags: Optional[dict[str, str]] = None
@@ -42,6 +59,19 @@ class WorkflowConfig:
 def workflow(config: WorkflowConfig | None = None):
     """
     Mark a function as a resumable workflow.
+    
+    The decorated function gains:
+    - Automatic lease acquisition for exclusive execution
+    - Background heartbeat to maintain lease
+    - State persistence and recovery on resume
+    - Metrics emission for observability
+    
+    Example:
+        >>> @workflow(WorkflowConfig(tags={"team": "platform"}))
+        ... def process_order(order_id: str):
+        ...     validate_order(order_id)
+        ...     charge_payment(order_id)
+        ...     ship_order(order_id)
     """
     def decorator(fn: Callable[P, R]) -> Callable[P, R]:
         @wraps(fn)
@@ -78,7 +108,10 @@ def workflow(config: WorkflowConfig | None = None):
                         duration_ms=(time.time() - lease_start) * 1000,
                         result="locked"
                     )
-                raise WorkflowLocked(f"Workflow {ctx.workflow_id} locked by another executor")
+                raise WorkflowLocked(
+                    workflow_id=ctx.workflow_id,
+                    owner_id=None  # Could query current owner
+                )
             
             if collector:
                 collector.record_lease_acquisition(
@@ -103,8 +136,7 @@ def workflow(config: WorkflowConfig | None = None):
                     
                     # Emit restore metrics
                     if collector:
-                        # Count events replayed (approximate from step number)
-                        events_replayed = state.step_number * 2  # Rough estimate
+                        events_replayed = state.step_number * 2
                         had_snapshot = hasattr(state, 'snapshot_id') and state.snapshot_id is not None
                         
                         collector.record_restore(
@@ -159,20 +191,85 @@ def workflow(config: WorkflowConfig | None = None):
 
 @dataclass
 class StepConfig:
-    checkpoint: bool = True              # Create checkpoint after step?
-    idempotency_key: Callable | None = None  # For external side effects
+    """
+    Configuration for @step decorator.
+    
+    Attributes:
+        checkpoint: Create checkpoint after step completion
+        idempotency_key: Custom function to generate idempotency key
+        retry: Retry policy for transient failures
+        timeout: Maximum step execution time
+        savepoint: Create rich savepoint with epistemic metadata
+    """
+    checkpoint: bool = True
+    idempotency_key: Callable | None = None
     retry: RetryPolicy | None = None
     timeout: timedelta | None = None
-    savepoint: bool = False              # Rich savepoint with metadata?
+    savepoint: bool = False
 
-def execute_with_timeout(fn, timeout: timedelta, *args, **kwargs):
-    # Simplistic timeout implementation (real one might use signals or threads)
-    # This is placeholder
-    return fn(*args, **kwargs)
+
+class TimeoutError(Exception):
+    """Internal timeout signal."""
+    pass
+
+
+def execute_with_timeout(fn: Callable, timeout: timedelta, workflow_id: str, 
+                         step_id: str, step_name: str, *args, **kwargs):
+    """
+    Execute function with timeout using threading.
+    
+    Uses a separate thread to run the function and joins with timeout.
+    This approach works on all platforms (unlike signal-based timeout).
+    """
+    result = [None]
+    exception = [None]
+    
+    def target():
+        try:
+            result[0] = fn(*args, **kwargs)
+        except Exception as e:
+            exception[0] = e
+    
+    thread = threading.Thread(target=target)
+    thread.daemon = True
+    thread.start()
+    thread.join(timeout=timeout.total_seconds())
+    
+    if thread.is_alive():
+        # Thread still running - timeout occurred
+        raise StepTimeout(
+            workflow_id=workflow_id,
+            step_id=step_id,
+            step_name=step_name,
+            timeout_seconds=timeout.total_seconds(),
+            elapsed_seconds=timeout.total_seconds()
+        )
+    
+    if exception[0] is not None:
+        raise exception[0]
+    
+    return result[0]
+
 
 def step(config: StepConfig | None = None):
     """
     Mark a function as a workflow step.
+    
+    The decorated function gains:
+    - Idempotent execution (cached results on replay)
+    - Automatic retry with exponential backoff
+    - Timeout enforcement
+    - State delta computation and journaling
+    - Optional savepoint creation
+    
+    Example:
+        >>> @step(StepConfig(
+        ...     retry=RetryPolicy(max_attempts=3),
+        ...     timeout=timedelta(seconds=30)
+        ... ))
+        ... def charge_payment(order_id: str) -> dict:
+        ...     result = payment_gateway.charge(order_id)
+        ...     return {"payment_id": result.id}
     """
     cfg = config or StepConfig()
     
@@ -227,14 +324,25 @@ def step(config: StepConfig | None = None):
             
             # Execute with timeout
             start_time = time.monotonic()
+            last_error: Optional[Exception] = None
+            
             try:
                 if cfg.timeout:
-                    result = execute_with_timeout(fn, cfg.timeout, *args, **kwargs)
+                    result = execute_with_timeout(
+                        fn, cfg.timeout, 
+                        ctx.workflow_id, step_id, fn.__name__,
+                        *args, **kwargs
+                    )
                 else:
                     result = fn(*args, **kwargs)
                     
+            except StepTimeout:
+                # Re-raise timeout errors directly
+                raise
+                
             except Exception as e:
                 duration_ms = int((time.monotonic() - start_time) * 1000)
+                last_error = e
                 
                 # Log failure
                 ctx.engine.journal.append(StepFailedEvent(
@@ -265,7 +373,24 @@ def step(config: StepConfig | None = None):
                     time.sleep(cfg.retry.backoff(attempt_id))
                     return wrapper(*args, **kwargs)  # Recursive retry
                 
-                raise
+                # Check if we've exceeded max attempts
+                if cfg.retry and attempt_id >= cfg.retry.max_attempts:
+                    raise TooManyAttempts(
+                        workflow_id=ctx.workflow_id,
+                        step_id=step_id,
+                        step_name=fn.__name__,
+                        max_attempts=cfg.retry.max_attempts,
+                        last_error=str(e)
+                    )
+                
+                # Wrap in StepExecutionFailed for context
+                raise StepExecutionFailed(
+                    workflow_id=ctx.workflow_id,
+                    step_id=step_id,
+                    step_name=fn.__name__,
+                    attempt=attempt_id,
+                    original_error=e
+                )
             
             duration_ms = int((time.monotonic() - start_time) * 1000)
             
