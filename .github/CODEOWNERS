@@ -1,0 +1,29 @@
+# Default owners for everything
+* @contd/core-team
+
+# SDK owners
+/sdks/typescript/ @contd/sdk-team
+/sdks/go/ @contd/sdk-team
+/sdks/java/ @contd/sdk-team
+/contd/sdk/ @contd/sdk-team
+
+# Infrastructure
+/terraform/ @contd/infra-team
+/helm/ @contd/infra-team
+/docker/ @contd/infra-team
+/.github/workflows/ @contd/infra-team
+
+# Documentation
+/docs/ @contd/docs-team
+*.md @contd/docs-team
+
+# Core engine
+/contd/core/ @contd/core-team
+/contd/persistence/ @contd/core-team
+/contd/runtime/ @contd/core-team
+
+# API
+/contd/api/ @contd/api-team
+
+# Observability
+/contd/observability/ @contd/observability-team
