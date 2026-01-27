@@ -1,0 +1,33 @@
+# Development environment values
+replicaCount: 1
+
+autoscaling:
+  enabled: false
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+contd:
+  logLevel: DEBUG
+  metricsEnabled: true
+  tracingEnabled: true
+
+postgresql:
+  enabled: true
+  primary:
+    persistence:
+      size: 5Gi
+
+redis:
+  enabled: true
+  master:
+    persistence:
+      size: 1Gi
+
+podDisruptionBudget:
+  enabled: false

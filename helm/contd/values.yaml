@@ -1,0 +1,138 @@
+# Default values for contd
+replicaCount: 2
+
+image:
+  repository: contd/contd-api
+  pullPolicy: IfNotPresent
+  tag: ""
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "8080"
+  prometheus.io/path: "/metrics"
+
+podSecurityContext:
+  fsGroup: 1000
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+
+service:
+  type: ClusterIP
+  httpPort: 8080
+  grpcPort: 50051
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: contd.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+resources:
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+  requests:
+    cpu: 250m
+    memory: 256Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Contd-specific configuration
+contd:
+  logLevel: INFO
+  metricsEnabled: true
+  tracingEnabled: true
+  
+  # Database configuration
+  database:
+    host: ""
+    port: 5432
+    name: contd
+    user: contd
+    existingSecret: ""
+    secretKey: password
+  
+  # Redis configuration
+  redis:
+    host: ""
+    port: 6379
+    existingSecret: ""
+    secretKey: password
+  
+  # S3 configuration
+  s3:
+    endpoint: ""
+    bucket: contd-snapshots
+    region: us-east-1
+    existingSecret: ""
+    accessKeySecretKey: access-key
+    secretKeySecretKey: secret-key
+
+  # OpenTelemetry configuration
+  otel:
+    endpoint: ""
+    insecure: true
+
+# PostgreSQL subchart configuration
+postgresql:
+  enabled: true
+  auth:
+    username: contd
+    password: contd
+    database: contd
+  primary:
+    persistence:
+      enabled: true
+      size: 10Gi
+
+# Redis subchart configuration
+redis:
+  enabled: true
+  architecture: standalone
+  auth:
+    enabled: false
+  master:
+    persistence:
+      enabled: true
+      size: 5Gi
+
+# Prometheus ServiceMonitor
+serviceMonitor:
+  enabled: false
+  interval: 15s
+  scrapeTimeout: 10s
+  labels: {}
+
+# Pod Disruption Budget
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1

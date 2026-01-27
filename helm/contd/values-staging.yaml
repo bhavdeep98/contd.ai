@@ -1,0 +1,40 @@
+# Staging environment values
+replicaCount: 2
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 70
+
+resources:
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+  requests:
+    cpu: 250m
+    memory: 256Mi
+
+contd:
+  logLevel: INFO
+  metricsEnabled: true
+  tracingEnabled: true
+
+postgresql:
+  enabled: true
+  primary:
+    persistence:
+      size: 10Gi
+
+redis:
+  enabled: true
+  master:
+    persistence:
+      size: 2Gi
+
+serviceMonitor:
+  enabled: true
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1

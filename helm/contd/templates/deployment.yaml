@@ -1,0 +1,105 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "contd.fullname" . }}
+  labels:
+    {{- include "contd.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "contd.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "contd.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "contd.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+            - name: grpc
+              containerPort: 50051
+              protocol: TCP
+          env:
+            - name: CONTD_DATABASE_URL
+              value: {{ include "contd.databaseUrl" . | quote }}
+            - name: CONTD_REDIS_URL
+              value: {{ include "contd.redisUrl" . | quote }}
+            - name: CONTD_LOG_LEVEL
+              value: {{ .Values.contd.logLevel | quote }}
+            - name: CONTD_METRICS_ENABLED
+              value: {{ .Values.contd.metricsEnabled | quote }}
+            - name: CONTD_TRACING_ENABLED
+              value: {{ .Values.contd.tracingEnabled | quote }}
+            {{- if .Values.contd.s3.endpoint }}
+            - name: CONTD_S3_ENDPOINT
+              value: {{ .Values.contd.s3.endpoint | quote }}
+            {{- end }}
+            - name: CONTD_S3_BUCKET
+              value: {{ .Values.contd.s3.bucket | quote }}
+            - name: CONTD_S3_REGION
+              value: {{ .Values.contd.s3.region | quote }}
+            {{- if .Values.contd.otel.endpoint }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.contd.otel.endpoint | quote }}
+            - name: OTEL_EXPORTER_OTLP_INSECURE
+              value: {{ .Values.contd.otel.insecure | quote }}
+            {{- end }}
+          {{- if .Values.contd.s3.existingSecret }}
+            - name: CONTD_S3_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.contd.s3.existingSecret }}
+                  key: {{ .Values.contd.s3.accessKeySecretKey }}
+            - name: CONTD_S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.contd.s3.existingSecret }}
+                  key: {{ .Values.contd.s3.secretKeySecretKey }}
+          {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
