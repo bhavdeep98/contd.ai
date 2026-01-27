@@ -1,0 +1,243 @@
+# Contd.ai Alert Definitions
+# Prometheus Alertmanager compatible alert rules
+
+groups:
+  - name: contd_critical
+    rules:
+      # P0: Data Corruption Alerts
+      - alert: DataCorruptionDetected
+        expr: increase(contd_checksum_validation_failures_total[5m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Data corruption detected"
+          description: "Checksum validation failures detected for {{ $labels.data_type }}. Immediate investigation required."
+          runbook_url: "https://docs.contd.ai/runbooks/data-corruption"
+
+      - alert: StateCorruptionDetected
+        expr: increase(contd_state_corruption_detected_total[5m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Workflow state corruption detected"
+          description: "State corruption detected for workflow {{ $labels.workflow_id }} at {{ $labels.detection_point }}"
+          runbook_url: "https://docs.contd.ai/runbooks/state-corruption"
+
+      # P0: Restore Performance (Core SLO)
+      - alert: RestoreLatencyHigh
+        expr: histogram_quantile(0.95, rate(contd_restore_duration_milliseconds_bucket[5m])) > 1000
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Restore latency exceeds SLO"
+          description: "P95 restore latency is {{ $value }}ms, exceeding 1000ms SLO for {{ $labels.workflow_name }}"
+          runbook_url: "https://docs.contd.ai/runbooks/restore-latency"
+
+      - alert: EventReplayCountHigh
+        expr: histogram_quantile(0.95, rate(contd_events_replayed_per_restore_bucket[5m])) > 100
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High event replay count during restore"
+          description: "P95 events replayed is {{ $value }}, consider increasing snapshot frequency for {{ $labels.workflow_name }}"
+
+      # P0: Availability
+      - alert: WorkflowSuccessRateLow
+        expr: contd_workflow_success_rate{timeframe="1h"} < 0.99
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Workflow success rate below SLO"
+          description: "Success rate for {{ $labels.workflow_name }} is {{ $value | humanizePercentage }}, below 99% target"
+          runbook_url: "https://docs.contd.ai/runbooks/workflow-failures"
+
+  - name: contd_important
+    rules:
+      # P1: Step Execution
+      - alert: StepDurationHigh
+        expr: histogram_quantile(0.95, rate(contd_step_duration_milliseconds_bucket[5m])) > 30000
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Step execution duration high"
+          description: "P95 step duration for {{ $labels.step_name }} is {{ $value }}ms"
+
+      - alert: StepFailureRateHigh
+        expr: |
+          sum(rate(contd_steps_executed_total{status="failed"}[5m])) by (workflow_name, step_name)
+          /
+          sum(rate(contd_steps_executed_total[5m])) by (workflow_name, step_name)
+          > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High step failure rate"
+          description: "Step {{ $labels.step_name }} in {{ $labels.workflow_name }} has {{ $value | humanizePercentage }} failure rate"
+
+      # P1: Lease Management
+      - alert: LeaseAcquisitionFailuresHigh
+        expr: increase(contd_lease_acquisition_failures_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High lease acquisition failures"
+          description: "{{ $value }} lease acquisition failures in last 5 minutes for {{ $labels.workflow_name }}"
+
+      - alert: LeaseAcquisitionSlow
+        expr: histogram_quantile(0.95, rate(contd_lease_acquisition_duration_milliseconds_bucket[5m])) > 500
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Lease acquisition slow"
+          description: "P95 lease acquisition time is {{ $value }}ms"
+
+      # P1: Persistence
+      - alert: JournalAppendSlow
+        expr: histogram_quantile(0.95, rate(contd_journal_append_duration_milliseconds_bucket[5m])) > 50
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Journal append operations slow"
+          description: "P95 journal append time is {{ $value }}ms for {{ $labels.event_type }}"
+
+      - alert: SnapshotSaveSlow
+        expr: histogram_quantile(0.95, rate(contd_snapshot_save_duration_milliseconds_bucket[5m])) > 2000
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Snapshot save operations slow"
+          description: "P95 snapshot save time is {{ $value }}ms for {{ $labels.storage_type }}"
+
+      - alert: SnapshotSizeLarge
+        expr: histogram_quantile(0.95, rate(contd_snapshot_size_bytes_bucket[5m])) > 10485760
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Large snapshot sizes detected"
+          description: "P95 snapshot size is {{ $value | humanize1024 }}B for {{ $labels.workflow_name }}"
+
+      # P1: Database Health
+      - alert: DatabaseConnectionErrors
+        expr: increase(contd_database_connection_errors_total[5m]) > 5
+        for: 2m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Database connection errors"
+          description: "{{ $value }} database connection errors in last 5 minutes"
+          runbook_url: "https://docs.contd.ai/runbooks/database-errors"
+
+      - alert: ComponentUnhealthy
+        expr: contd_component_health_status == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Component unhealthy"
+          description: "Component {{ $labels.component }} is unhealthy"
+          runbook_url: "https://docs.contd.ai/runbooks/component-health"
+
+  - name: contd_operational
+    rules:
+      # P2: Resource Usage
+      - alert: HighMemoryUsage
+        expr: contd_process_memory_bytes{memory_type="rss"} > 2147483648
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High memory usage"
+          description: "Process memory usage is {{ $value | humanize1024 }}B"
+
+      - alert: HighCPUUsage
+        expr: contd_process_cpu_usage_percent > 80
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High CPU usage"
+          description: "Process CPU usage is {{ $value }}%"
+
+      # P2: Retries
+      - alert: HighRetryRate
+        expr: |
+          sum(rate(contd_step_retries_total[5m])) by (workflow_name, step_name)
+          > 0.1
+        for: 10m
+        labels:
+          severity: info
+          team: platform
+        annotations:
+          summary: "High retry rate"
+          description: "Step {{ $labels.step_name }} has high retry rate"
+
+      # P2: Critical Errors
+      - alert: CriticalErrorsDetected
+        expr: increase(contd_critical_errors_total[5m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Critical errors detected"
+          description: "Critical error in {{ $labels.component }}: {{ $labels.error_type }}"
+          runbook_url: "https://docs.contd.ai/runbooks/critical-errors"
+
+  - name: contd_business
+    rules:
+      # Business Metrics
+      - alert: NoWorkflowsRunning
+        expr: sum(rate(contd_workflows_started_total[1h])) == 0
+        for: 1h
+        labels:
+          severity: info
+          team: business
+        annotations:
+          summary: "No workflows started in last hour"
+          description: "No new workflows have been started in the last hour"
+
+      - alert: BillingMetricAnomalous
+        expr: |
+          abs(
+            sum(rate(contd_managed_steps_total[1h]))
+            -
+            sum(rate(contd_managed_steps_total[1h] offset 1d))
+          )
+          /
+          sum(rate(contd_managed_steps_total[1h] offset 1d))
+          > 0.5
+        for: 30m
+        labels:
+          severity: info
+          team: business
+        annotations:
+          summary: "Unusual billing metric change"
+          description: "Managed steps count changed by more than 50% compared to yesterday"
