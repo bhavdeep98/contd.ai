@@ -44,6 +44,7 @@ observability = [
     "opentelemetry-api>=1.20",
     "opentelemetry-sdk>=1.20",
     "prometheus-client>=0.17",
+    "psutil>=5.9",
 ]
 all = [
     "contd[postgres,redis,s3,observability]",
