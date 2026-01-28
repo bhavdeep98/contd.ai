@@ -2,14 +2,20 @@
 Metrics exporter - exposes Prometheus metrics via HTTP endpoint
 """
 
-from prometheus_client import generate_latest, REGISTRY, CONTENT_TYPE_LATEST, Info
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 from typing import Optional
 
+from prometheus_client import (
+    generate_latest,
+    REGISTRY,
+    CONTENT_TYPE_LATEST,
+    Info,
+)
+
 # Create an info metric that's always present
-_exporter_info = Info('contd_exporter', 'Contd metrics exporter information')
-_exporter_info.info({'version': '1.0.0', 'status': 'running'})
+_exporter_info = Info("contd_exporter", "Contd metrics exporter information")
+_exporter_info.info({"version": "1.0.0", "status": "running"})
 
 
 class MetricsHandler(BaseHTTPRequestHandler):
