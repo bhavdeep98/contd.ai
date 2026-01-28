@@ -1,4 +1,4 @@
-module github.com/contd/sdk-go
+module github.com/bhavdeep98/contd.ai/sdks/go
 
 go 1.21
 
