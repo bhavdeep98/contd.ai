@@ -2,10 +2,14 @@
 Metrics exporter - exposes Prometheus metrics via HTTP endpoint
 """
 
-from prometheus_client import generate_latest, REGISTRY, CONTENT_TYPE_LATEST
+from prometheus_client import generate_latest, REGISTRY, CONTENT_TYPE_LATEST, Info
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 from typing import Optional
+
+# Create an info metric that's always present
+_exporter_info = Info('contd_exporter', 'Contd metrics exporter information')
+_exporter_info.info({'version': '1.0.0', 'status': 'running'})
 
 
 class MetricsHandler(BaseHTTPRequestHandler):
@@ -14,9 +18,13 @@ class MetricsHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/metrics":
             # Generate Prometheus format metrics
-            metrics = generate_latest(REGISTRY)
+            try:
+                metrics = generate_latest(REGISTRY)
+            except Exception:
+                metrics = b"# No metrics available\n"
             self.send_response(200)
             self.send_header("Content-Type", CONTENT_TYPE_LATEST)
+            self.send_header("Content-Length", str(len(metrics)))
             self.end_headers()
             self.wfile.write(metrics)
         elif self.path == "/health":

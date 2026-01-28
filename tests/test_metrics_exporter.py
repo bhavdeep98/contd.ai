@@ -121,24 +121,27 @@ class TestMetricsExporter:
     def test_metrics_content_format(self):
         """Test metrics are in Prometheus format"""
         # Import metrics to ensure they're registered
-        import contd.observability.metrics  # noqa: F401
+        from contd.observability.metrics import collector
         
         exporter = MetricsExporter(port=9990)
         try:
             exporter.start()
-            time.sleep(1.0)  # Give server more time to start
+            time.sleep(0.5)
+            
+            # Record a metric to ensure something is in the registry
+            collector.record_workflow_start("test_format_workflow", trigger="test")
             
             # Retry a few times in case of timing issues
             content = ""
-            for _ in range(3):
+            for _ in range(5):
                 response = requests.get('http://localhost:9990/metrics', timeout=2)
                 content = response.text
-                if content:
+                if 'contd_workflows_started_total' in content:
                     break
-                time.sleep(0.5)
+                time.sleep(0.3)
             
-            # Should contain Prometheus format metrics (at minimum the default process metrics)
-            assert '# HELP' in content or '# TYPE' in content or 'python_' in content or 'process_' in content
+            # Should contain our recorded metric
+            assert 'contd_workflows_started_total' in content
             
         finally:
             exporter.stop()
