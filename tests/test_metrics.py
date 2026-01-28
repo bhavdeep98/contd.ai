@@ -5,7 +5,6 @@ Unit tests for metrics collection and emission
 import pytest
 import time
 from unittest.mock import Mock, patch, MagicMock
-from prometheus_client import REGISTRY
 from contd.observability.metrics import (
     MetricsCollector,
     collector,
@@ -18,16 +17,6 @@ from contd.observability.metrics import (
 
 class TestMetricsCollector:
     """Test MetricsCollector functionality"""
-    
-    def setup_method(self):
-        """Reset metrics before each test"""
-        # Clear registry to avoid conflicts
-        collectors = list(REGISTRY._collector_to_names.keys())
-        for c in collectors:
-            try:
-                REGISTRY.unregister(c)
-            except Exception:
-                pass
     
     def test_singleton_instance(self):
         """Test collector is singleton"""
