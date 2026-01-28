@@ -10,7 +10,7 @@ pip install contd
 
 Or from source:
 ```bash
-git clone https://github.com/contd/contd.ai.git
+git clone https://github.com/bhavdeep98/contd.ai.git
 cd contd.ai
 pip install -e .
 ```
@@ -197,4 +197,5 @@ String workflowId = client.startWorkflow("data_pipeline",
 - [Architecture Overview](ARCHITECTURE.md) - Understand how Contd works
 - [API Reference](API_REFERENCE.md) - Complete API documentation
 - [Examples](../examples/) - Real-world workflow examples
-- [Migration Guides](MIGRATION_LANGCHAIN.md) - Coming from another framework?
+- [Troubleshooting](TROUBLESHOOTING.md) - Common issues and solutions
+- [Contributing](CONTRIBUTING.md) - How to contribute

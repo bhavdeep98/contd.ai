@@ -1,17 +1,35 @@
 {
-  "name": "@contd/sdk",
-  "version": "1.0.0",
+  "name": "@contd.ai/sdk",
+  "version": "0.1.0",
   "description": "Contd SDK for TypeScript/Node.js - Resumable workflows with exactly-once execution",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bhavdeep98/contd.ai.git",
+    "directory": "sdks/typescript"
+  },
+  "homepage": "https://github.com/bhavdeep98/contd.ai",
+  "bugs": {
+    "url": "https://github.com/bhavdeep98/contd.ai/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc",
+    "prepublishOnly": "npm run build",
     "test": "jest",
     "lint": "eslint src/**/*.ts"
   },
   "keywords": ["workflow", "resumable", "exactly-once", "orchestration"],
   "author": "Contd Team",
-  "license": "MIT",
+  "license": "BSL-1.1",
   "dependencies": {
     "axios": "^1.6.0"
   },

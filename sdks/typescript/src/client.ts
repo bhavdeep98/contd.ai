@@ -198,7 +198,11 @@ export class ContdClient {
         goalSummary: (metadata?.goal_summary as string) || '',
         hypotheses: (metadata?.hypotheses as string[]) || [],
         questions: (metadata?.questions as string[]) || [],
-        decisions: (metadata?.decisions as Array<Record<string, unknown>>) || [],
+        decisions: ((metadata?.decisions as Array<Record<string, unknown>>) || []).map(d => ({
+          decision: (d.decision as string) || '',
+          rationale: (d.rationale as string) || '',
+          alternatives: d.alternatives as string[] | undefined,
+        })),
         nextStep: (metadata?.next_step as string) || '',
       },
       snapshotSizeBytes: data.snapshot_size_bytes as number | undefined,

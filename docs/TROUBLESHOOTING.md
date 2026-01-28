@@ -308,7 +308,6 @@ print(f"Leases: {status['leases']}")
 
 ## Getting Help
 
-1. Check [GitHub Issues](https://github.com/contd/contd.ai/issues)
-2. Search [Discussions](https://github.com/contd/contd.ai/discussions)
+1. Check [GitHub Issues](https://github.com/bhavdeep98/contd.ai/issues)
+2. Search [Discussions](https://github.com/bhavdeep98/contd.ai/discussions)
 3. Join [Discord](https://discord.gg/contd)
-4. Email: support@contd.ai

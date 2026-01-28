@@ -5,13 +5,13 @@ Resumable workflows with exactly-once execution semantics.
 ## Installation
 
 ```bash
-npm install @contd/sdk
+npm install @contd.ai/sdk
 ```
 
 ## Quick Start
 
 ```typescript
-import { ContdClient, workflow, step, WorkflowConfig, StepConfig, RetryPolicy } from '@contd/sdk';
+import { ContdClient, workflow, step, WorkflowConfig, StepConfig, RetryPolicy } from '@contd.ai/sdk';
 
 // Remote client usage
 const client = new ContdClient({
@@ -39,7 +39,7 @@ const newWorkflowId = await client.timeTravel(workflowId, 'savepoint-id');
 ## Defining Workflows
 
 ```typescript
-import { workflow, step, ExecutionContext } from '@contd/sdk';
+import { workflow, step, ExecutionContext } from '@contd.ai/sdk';
 
 // Define a step with retry policy
 @step({
@@ -68,7 +68,7 @@ async function processOrder(orderId: string) {
 ## Testing
 
 ```typescript
-import { ContdTestCase, WorkflowTestBuilder } from '@contd/sdk';
+import { ContdTestCase, WorkflowTestBuilder } from '@contd.ai/sdk';
 
 // Using test case
 const testCase = new ContdTestCase();
@@ -103,7 +103,7 @@ import {
   WorkflowLocked,
   StepTimeout,
   TooManyAttempts
-} from '@contd/sdk';
+} from '@contd.ai/sdk';
 
 try {
   await client.startWorkflow({ ... });

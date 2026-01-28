@@ -165,11 +165,11 @@ export interface StepOptions extends StepConfig {}
  * ```
  */
 export function step(options: StepOptions = {}) {
-  const config: Required<StepConfig> = {
+  const config = {
     checkpoint: options.checkpoint ?? true,
-    idempotencyKey: options.idempotencyKey ?? undefined,
-    retry: options.retry ?? undefined,
-    timeout: options.timeout ?? undefined,
+    idempotencyKey: options.idempotencyKey,
+    retry: options.retry,
+    timeout: options.timeout,
     savepoint: options.savepoint ?? false,
   };
 
@@ -312,7 +312,7 @@ export function step(options: StepOptions = {}) {
           const backoff = calculateBackoff(config.retry, currentAttempt);
           console.log(`Retrying step ${stepId}, attempt ${currentAttempt + 1}`);
           await sleep(backoff * 1000);
-          return wrapper.apply(this, args);
+          return wrapper.apply(this, args) as ReturnType<T>;
         }
 
         // Check max attempts

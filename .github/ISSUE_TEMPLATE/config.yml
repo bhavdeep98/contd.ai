@@ -4,7 +4,7 @@ contact_links:
     url: https://discord.gg/contd
     about: Join our Discord for real-time help and discussions
   - name: Documentation
-    url: https://contd.ai/docs
+    url: https://github.com/bhavdeep98/contd.ai/tree/main/docs
     about: Check our documentation before opening an issue
   - name: Stack Overflow
     url: https://stackoverflow.com/questions/tagged/contd

@@ -13,7 +13,7 @@ We welcome contributions! This guide will help you get started.
 ### Clone and Install
 
 ```bash
-git clone https://github.com/contd/contd.ai.git
+git clone https://github.com/bhavdeep98/contd.ai.git
 cd contd.ai
 
 # Create virtual environment
@@ -281,8 +281,8 @@ Documentation lives in `docs/`:
 
 ## Getting Help
 
-- **Questions**: Open a [Discussion](https://github.com/contd/contd.ai/discussions)
-- **Bugs**: Open an [Issue](https://github.com/contd/contd.ai/issues)
+- **Questions**: Open a [Discussion](https://github.com/bhavdeep98/contd.ai/discussions)
+- **Bugs**: Open an [Issue](https://github.com/bhavdeep98/contd.ai/issues)
 - **Chat**: Join [Discord](https://discord.gg/contd)
 
 ## Code of Conduct
@@ -291,4 +291,4 @@ Be respectful and inclusive. See [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the MIT License.
+By contributing, you agree that your contributions will be licensed under the Business Source License 1.1 (BSL-1.1), which converts to Apache 2.0 on January 27, 2030.
