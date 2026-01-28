@@ -9,7 +9,12 @@ class ContdClient:
 
     DEFAULT_TIMEOUT = 30  # seconds
 
-    def __init__(self, api_key: str, base_url: str = "https://api.contd.ai", timeout: int = None):
+    def __init__(
+        self,
+        api_key: str,
+        base_url: str = "https://api.contd.ai",
+        timeout: int = None,
+    ):
         self.api_key = api_key
         self.base_url = base_url
         self.timeout = timeout or self.DEFAULT_TIMEOUT
