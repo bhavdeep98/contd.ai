@@ -1,6 +1,6 @@
 {
   "name": "@contd.ai/sdk",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Contd SDK for TypeScript/Node.js - Resumable workflows with exactly-once execution",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
