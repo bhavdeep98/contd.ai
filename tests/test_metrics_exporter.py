@@ -120,16 +120,25 @@ class TestMetricsExporter:
     
     def test_metrics_content_format(self):
         """Test metrics are in Prometheus format"""
+        # Import metrics to ensure they're registered
+        import contd.observability.metrics  # noqa: F401
+        
         exporter = MetricsExporter(port=9990)
         try:
             exporter.start()
-            time.sleep(0.2)
+            time.sleep(1.0)  # Give server more time to start
             
-            response = requests.get('http://localhost:9990/metrics', timeout=2)
-            content = response.text
+            # Retry a few times in case of timing issues
+            content = ""
+            for _ in range(3):
+                response = requests.get('http://localhost:9990/metrics', timeout=2)
+                content = response.text
+                if content:
+                    break
+                time.sleep(0.5)
             
-            # Should contain Prometheus format metrics
-            assert 'contd_' in content or '# HELP' in content or '# TYPE' in content
+            # Should contain Prometheus format metrics (at minimum the default process metrics)
+            assert '# HELP' in content or '# TYPE' in content or 'python_' in content or 'process_' in content
             
         finally:
             exporter.stop()

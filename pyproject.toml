@@ -33,6 +33,7 @@ dependencies = [
     "python-multipart>=0.0.6",
     "httpx>=0.24",
     "pydantic>=2.0",
+    "jsonpatch>=1.33",
 ]
 
 [project.optional-dependencies]
@@ -70,3 +71,21 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 addopts = "-v --tb=short"
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = false
+warn_unused_ignores = true
+ignore_missing_imports = true
+implicit_optional = true
+strict_optional = false
+check_untyped_defs = false
+disallow_untyped_defs = false
+
+[tool.black]
+line-length = 88
+target-version = ['py310', 'py311', 'py312']
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"

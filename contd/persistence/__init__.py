@@ -1,6 +1,7 @@
 """
 Persistence layer for event sourcing and state management.
 """
+
 from .journal import EventJournal, EventCorruptionError
 from .snapshots import SnapshotStore, SnapshotNotFoundError, SnapshotCorruptionError
 from .leases import LeaseManager, Lease, LeaseError, LeaseNotHeldError, StaleLeaseError

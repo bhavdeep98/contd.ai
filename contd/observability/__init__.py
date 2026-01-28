@@ -44,7 +44,7 @@ def setup_observability(
 ):
     """
     Setup complete observability stack.
-    
+
     Args:
         metrics_port: Port for Prometheus metrics endpoint
         enable_background: Enable background system metrics collection
@@ -56,18 +56,18 @@ def setup_observability(
     """
     # Start metrics server
     start_metrics_server(port=metrics_port)
-    
+
     # Start background collection
     if enable_background:
         start_background_collection(interval_seconds=background_interval)
-    
+
     # Setup tracing
     if enable_tracing:
         setup_tracing(
             service_name=service_name,
             otlp_endpoint=tracing_endpoint,
         )
-    
+
     # Setup JSON logging
     if enable_json_logging:
         setup_json_logging()
@@ -82,31 +82,31 @@ def teardown_observability():
 
 __all__ = [
     # Metrics
-    'collector',
-    'MetricsCollector',
-    'start_metrics_server',
-    'stop_metrics_server',
-    'start_background_collection',
-    'stop_background_collection',
-    'MetricsPusher',
+    "collector",
+    "MetricsCollector",
+    "start_metrics_server",
+    "stop_metrics_server",
+    "start_background_collection",
+    "stop_background_collection",
+    "MetricsPusher",
     # Tracing
-    'setup_tracing',
-    'shutdown_tracing',
-    'get_tracer',
-    'trace_workflow',
-    'trace_step',
-    'trace_restore',
-    'traced',
+    "setup_tracing",
+    "shutdown_tracing",
+    "get_tracer",
+    "trace_workflow",
+    "trace_step",
+    "trace_restore",
+    "traced",
     # Logging
-    'setup_json_logging',
-    'get_logger',
-    'set_workflow_context',
-    'clear_workflow_context',
-    'JSONFormatter',
-    'StructuredLogger',
+    "setup_json_logging",
+    "get_logger",
+    "set_workflow_context",
+    "clear_workflow_context",
+    "JSONFormatter",
+    "StructuredLogger",
     # Health
-    'health_router',
+    "health_router",
     # Setup
-    'setup_observability',
-    'teardown_observability',
+    "setup_observability",
+    "teardown_observability",
 ]

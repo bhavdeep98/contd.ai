@@ -1,5 +1,6 @@
 from typing import Callable, Dict, Optional
 
+
 class WorkflowRegistry:
     _workflows: Dict[str, Callable] = {}
 

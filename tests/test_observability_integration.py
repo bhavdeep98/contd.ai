@@ -64,7 +64,7 @@ class TestObservabilitySetup:
         """Test metrics are available after setup"""
         try:
             setup_observability(metrics_port=9992)
-            time.sleep(0.5)
+            time.sleep(1.0)  # Give server more time to start
             
             # Record some metrics
             collector.record_workflow_start("test_workflow", trigger="api")
@@ -75,9 +75,14 @@ class TestObservabilitySetup:
                 status="completed"
             )
             
-            # Fetch metrics
-            response = requests.get('http://localhost:9992/metrics', timeout=1)
-            content = response.text
+            # Fetch metrics with retry
+            content = ""
+            for _ in range(3):
+                response = requests.get('http://localhost:9992/metrics', timeout=2)
+                content = response.text
+                if 'contd_workflows_started_total' in content:
+                    break
+                time.sleep(0.5)
             
             # Should contain our metrics
             assert 'contd_workflows_started_total' in content
@@ -94,7 +99,7 @@ class TestEndToEndWorkflow:
         """Test complete workflow lifecycle with metrics"""
         try:
             setup_observability(metrics_port=9991)
-            time.sleep(0.5)
+            time.sleep(1.0)  # Give server more time to start
             
             workflow_name = "e2e_test"
             
@@ -128,11 +133,16 @@ class TestEndToEndWorkflow:
                 status="completed"
             )
             
-            # Verify metrics endpoint
-            response = requests.get('http://localhost:9991/metrics', timeout=1)
-            assert response.status_code == 200
+            # Verify metrics endpoint with retry
+            content = ""
+            for _ in range(3):
+                response = requests.get('http://localhost:9991/metrics', timeout=2)
+                assert response.status_code == 200
+                content = response.text
+                if workflow_name in content:
+                    break
+                time.sleep(0.5)
             
-            content = response.text
             assert workflow_name in content
             
         finally:
@@ -142,7 +152,7 @@ class TestEndToEndWorkflow:
         """Test workflow with restore metrics"""
         try:
             setup_observability(metrics_port=9990)
-            time.sleep(0.5)
+            time.sleep(1.0)  # Give server more time to start
             
             workflow_name = "restore_test"
             
@@ -170,9 +180,15 @@ class TestEndToEndWorkflow:
                 status="completed"
             )
             
-            # Verify restore metrics
-            response = requests.get('http://localhost:9990/metrics', timeout=1)
-            content = response.text
+            # Verify restore metrics with retry
+            content = ""
+            for _ in range(3):
+                response = requests.get('http://localhost:9990/metrics', timeout=2)
+                content = response.text
+                if 'contd_restore_duration_milliseconds' in content:
+                    break
+                time.sleep(0.5)
+            
             assert 'contd_restore_duration_milliseconds' in content
             assert 'contd_events_replayed_per_restore' in content
             

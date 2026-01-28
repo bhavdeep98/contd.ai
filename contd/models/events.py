@@ -1,14 +1,17 @@
 from enum import Enum
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Literal
+from typing import Literal
 import uuid
+
 
 def generate_id():
     return str(uuid.uuid4())
 
+
 def utcnow():
     return datetime.utcnow()
+
 
 class EventType(Enum):
     WORKFLOW_STARTED = "workflow.started"
@@ -20,11 +23,12 @@ class EventType(Enum):
     WORKFLOW_RESTORED = "workflow.restored"
     WORKFLOW_COMPLETED = "workflow.completed"
 
+
 @dataclass(frozen=True)
 class BaseEvent:
     event_id: str
     workflow_id: str
-    org_id: str # Multi-tenancy
+    org_id: str  # Multi-tenancy
     timestamp: datetime
     schema_version: str = "1.0"
     # producer_version and checksum are added by the Journal at append time
@@ -37,6 +41,7 @@ class StepIntentionEvent(BaseEvent):
     attempt_id: int = 0
     event_type: Literal[EventType.STEP_INTENTION] = EventType.STEP_INTENTION
 
+
 @dataclass(frozen=True)
 class StepCompletedEvent(BaseEvent):
     step_id: str = ""
@@ -44,10 +49,11 @@ class StepCompletedEvent(BaseEvent):
     state_delta: dict = None  # Only changes
     duration_ms: int = 0
     event_type: Literal[EventType.STEP_COMPLETED] = EventType.STEP_COMPLETED
-    
+
     def __post_init__(self):
         if self.state_delta is None:
-            object.__setattr__(self, 'state_delta', {})
+            object.__setattr__(self, "state_delta", {})
+
 
 @dataclass(frozen=True)
 class StepFailedEvent(BaseEvent):
@@ -55,6 +61,7 @@ class StepFailedEvent(BaseEvent):
     attempt_id: int = 0
     error: str = ""
     event_type: Literal[EventType.STEP_FAILED] = EventType.STEP_FAILED
+
 
 @dataclass(frozen=True)
 class SavepointCreatedEvent(BaseEvent):
@@ -69,11 +76,11 @@ class SavepointCreatedEvent(BaseEvent):
     # State reference
     snapshot_ref: str = ""  # S3 key or inline
     event_type: Literal[EventType.SAVEPOINT_CREATED] = EventType.SAVEPOINT_CREATED
-    
+
     def __post_init__(self):
         if self.current_hypotheses is None:
-            object.__setattr__(self, 'current_hypotheses', [])
+            object.__setattr__(self, "current_hypotheses", [])
         if self.open_questions is None:
-            object.__setattr__(self, 'open_questions', [])
+            object.__setattr__(self, "open_questions", [])
         if self.decision_log is None:
-            object.__setattr__(self, 'decision_log', [])
+            object.__setattr__(self, "decision_log", [])

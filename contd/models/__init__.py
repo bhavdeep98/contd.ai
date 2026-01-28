@@ -3,6 +3,7 @@ Contd Models
 
 Data models for workflow state, events, and persistence.
 """
+
 from .state import WorkflowState, StateMigration
 from .events import (
     EventType,
@@ -37,7 +38,7 @@ __all__ = [
 
 # Auth models are optional (require email-validator)
 try:
-    from .auth import (
+    from .auth import (  # noqa: F401
         UserRole,
         UserBase,
         UserCreate,
@@ -54,23 +55,26 @@ try:
         Token,
         TokenData,
     )
-    __all__.extend([
-        "UserRole",
-        "UserBase",
-        "UserCreate",
-        "UserInDB",
-        "User",
-        "OrganizationBase",
-        "OrganizationCreate",
-        "Organization",
-        "OrganizationMemberBase",
-        "OrganizationMemberCreate",
-        "OrganizationMember",
-        "ApiKeyCreate",
-        "ApiKey",
-        "Token",
-        "TokenData",
-    ])
+
+    __all__.extend(
+        [
+            "UserRole",
+            "UserBase",
+            "UserCreate",
+            "UserInDB",
+            "User",
+            "OrganizationBase",
+            "OrganizationCreate",
+            "Organization",
+            "OrganizationMemberBase",
+            "OrganizationMemberCreate",
+            "OrganizationMember",
+            "ApiKeyCreate",
+            "ApiKey",
+            "Token",
+            "TokenData",
+        ]
+    )
 except ImportError:
     # email-validator not installed, auth models unavailable
     pass

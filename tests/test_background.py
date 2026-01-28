@@ -52,8 +52,8 @@ class TestBackgroundCollector:
         finally:
             collector.stop()
     
-    @patch('contd.observability.background.process_memory_bytes')
-    @patch('contd.observability.background.process_cpu_usage_percent')
+    @patch('contd.observability.metrics.process_memory_bytes')
+    @patch('contd.observability.metrics.process_cpu_usage_percent')
     def test_system_metrics_collected(self, mock_cpu, mock_memory):
         """Test system metrics are collected"""
         collector = BackgroundCollector(interval_seconds=1)

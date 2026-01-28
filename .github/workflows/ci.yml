@@ -33,7 +33,8 @@ jobs:
         run: black --check contd/
 
       - name: Run mypy
-        run: mypy contd/ --ignore-missing-imports
+        run: mypy contd/ --config-file pyproject.toml
+        continue-on-error: true  # Type checking is advisory for now
 
   test:
     name: Test

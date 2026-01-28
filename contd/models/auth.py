@@ -1,8 +1,9 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 from datetime import datetime
 from uuid import UUID
 from enum import Enum
+
 
 class UserRole(str, Enum):
     OWNER = "owner"
@@ -10,12 +11,15 @@ class UserRole(str, Enum):
     MEMBER = "member"
     VIEWER = "viewer"
 
+
 class UserBase(BaseModel):
     email: EmailStr
     full_name: Optional[str] = None
 
+
 class UserCreate(UserBase):
     password: str
+
 
 class UserInDB(UserBase):
     user_id: UUID
@@ -26,6 +30,7 @@ class UserInDB(UserBase):
     class Config:
         orm_mode = True
 
+
 class User(UserBase):
     user_id: UUID
     created_at: datetime
@@ -33,11 +38,14 @@ class User(UserBase):
     class Config:
         orm_mode = True
 
+
 class OrganizationBase(BaseModel):
     name: str
 
+
 class OrganizationCreate(OrganizationBase):
     pass
+
 
 class Organization(OrganizationBase):
     org_id: UUID
@@ -47,21 +55,26 @@ class Organization(OrganizationBase):
     class Config:
         orm_mode = True
 
+
 class OrganizationMemberBase(BaseModel):
     role: UserRole
 
+
 class OrganizationMemberCreate(OrganizationMemberBase):
-    user_email: EmailStr # Invite by email
+    user_email: EmailStr  # Invite by email
+
 
 class OrganizationMember(OrganizationMemberBase):
     org_id: UUID
     user_id: UUID
     joined_at: datetime
 
+
 class ApiKeyCreate(BaseModel):
     name: str
     scopes: List[str] = []
     expires_in_days: Optional[int] = None
+
 
 class ApiKey(BaseModel):
     key_id: UUID
@@ -73,9 +86,11 @@ class ApiKey(BaseModel):
     created_at: datetime
     expires_at: Optional[datetime]
 
+
 class Token(BaseModel):
     access_token: str
     token_type: str
+
 
 class TokenData(BaseModel):
     user_id: Optional[str] = None
