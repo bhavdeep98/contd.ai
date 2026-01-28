@@ -234,7 +234,8 @@ class WebhookStore:
             update_fields.append("updated_at = ?")
             update_values.append(now)
 
-            sql = f"UPDATE webhooks SET {', '.join(update_fields)} WHERE webhook_id = ? AND org_id = ?"
+            # Field names are from a controlled allowlist, not user input
+            sql = f"UPDATE webhooks SET {', '.join(update_fields)} WHERE webhook_id = ? AND org_id = ?"  # nosec B608
             update_values.extend([str(webhook_id), str(org_id)])
             self.db.execute(sql, *update_values)
 

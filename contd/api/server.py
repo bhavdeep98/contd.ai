@@ -166,7 +166,9 @@ async def shutdown_event():
 
 def main():
     """Entry point to run the server"""
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    host = os.getenv("CONTD_HOST", "127.0.0.1")
+    port = int(os.getenv("CONTD_PORT", "8000"))
+    uvicorn.run(app, host=host, port=port)
 
 
 if __name__ == "__main__":

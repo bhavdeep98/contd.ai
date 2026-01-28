@@ -36,7 +36,7 @@ class MetricsHandler(BaseHTTPRequestHandler):
 class MetricsExporter:
     """Runs HTTP server to expose metrics"""
 
-    def __init__(self, port: int = 9090, host: str = "0.0.0.0"):
+    def __init__(self, port: int = 9090, host: str = "127.0.0.1"):
         self.port = port
         self.host = host
         self.server: Optional[HTTPServer] = None
@@ -64,7 +64,7 @@ class MetricsExporter:
 _exporter: Optional[MetricsExporter] = None
 
 
-def start_metrics_server(port: int = 9090, host: str = "0.0.0.0"):
+def start_metrics_server(port: int = 9090, host: str = "127.0.0.1"):
     """Start metrics exporter server"""
     global _exporter
     if _exporter is None:

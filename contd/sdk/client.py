@@ -7,9 +7,12 @@ from contd.models.savepoint import Savepoint
 class ContdClient:
     """Client for remote workflow execution"""
 
-    def __init__(self, api_key: str, base_url: str = "https://api.contd.ai"):
+    DEFAULT_TIMEOUT = 30  # seconds
+
+    def __init__(self, api_key: str, base_url: str = "https://api.contd.ai", timeout: int = None):
         self.api_key = api_key
         self.base_url = base_url
+        self.timeout = timeout or self.DEFAULT_TIMEOUT
 
     def start_workflow(
         self, workflow_name: str, input_data: dict, config: WorkflowConfig | None = None
@@ -28,6 +31,7 @@ class ContdClient:
                 "config": cfg_dict,
             },
             headers={"Authorization": f"Bearer {self.api_key}"},
+            timeout=self.timeout,
         )
         response.raise_for_status()
         return response.json()["workflow_id"]
@@ -37,6 +41,7 @@ class ContdClient:
         response = requests.get(
             f"{self.base_url}/v1/workflows/{workflow_id}",
             headers={"Authorization": f"Bearer {self.api_key}"},
+            timeout=self.timeout,
         )
         response.raise_for_status()
         return response.json()
@@ -46,6 +51,7 @@ class ContdClient:
         response = requests.post(
             f"{self.base_url}/v1/workflows/{workflow_id}/resume",
             headers={"Authorization": f"Bearer {self.api_key}"},
+            timeout=self.timeout,
         )
         response.raise_for_status()
         return response.json()["status"]
@@ -55,6 +61,7 @@ class ContdClient:
         response = requests.get(
             f"{self.base_url}/v1/workflows/{workflow_id}/savepoints",
             headers={"Authorization": f"Bearer {self.api_key}"},
+            timeout=self.timeout,
         )
         response.raise_for_status()
         # deserialization needs care for Savepoint fields
@@ -68,6 +75,7 @@ class ContdClient:
             f"{self.base_url}/v1/workflows/{workflow_id}/time-travel",
             json={"savepoint_id": savepoint_id},
             headers={"Authorization": f"Bearer {self.api_key}"},
+            timeout=self.timeout,
         )
         response.raise_for_status()
         return response.json()["new_workflow_id"]

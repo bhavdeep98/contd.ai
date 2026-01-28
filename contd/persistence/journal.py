@@ -134,14 +134,15 @@ class EventJournal:
         Retrieve events for replay with optional checksum validation.
         """
         # Build query with optional limit
+        # order_by is controlled internally, not from user input
         sql = f"""
             SELECT event_seq, payload, event_type, checksum
             FROM events 
             WHERE workflow_id = ? AND org_id = ? AND event_seq > ?
             ORDER BY {order_by}
-        """
+        """  # nosec B608
         if limit:
-            sql += f" LIMIT {limit}"
+            sql += f" LIMIT {int(limit)}"
 
         rows = self.db.query(sql, workflow_id, org_id, after_seq)
 
