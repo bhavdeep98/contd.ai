@@ -22,6 +22,9 @@ python 03_ai_agent.py
 | 10 | [Research Agent](10_research_agent.py) | Multi-source research with savepoints |
 | 11 | [Code Review Agent](11_code_review_agent.py) | Automated PR review |
 | 12 | [Customer Support](12_customer_support.py) | Support ticket automation |
+| 13 | [Context Preservation](13_context_preservation.py) | Reasoning ledger and distillation |
+| 14 | [Ledger Visualization](14_ledger_visualization.py) | Human-in-the-loop review |
+| - | [**FrontierMath Solver**](frontier_math/) | **Complete benchmark solver** |
 
 ## Running Examples
 
@@ -63,3 +66,20 @@ Automated code review using LLM analysis. Reviews pull requests, identifies issu
 
 ### Customer Support (12)
 Support ticket automation with LLM-powered responses. Handles ticket classification, response generation, and escalation.
+
+### Context Preservation (13)
+Demonstrates contd.ai's context preservation features: reasoning ledger, distillation, health monitoring, and restore with context.
+
+### Ledger Visualization (14)
+Shows how to use the reasoning ledger API and web UI for human-in-the-loop review of agent reasoning.
+
+### FrontierMath Solver (frontier_math/)
+**Complete implementation** demonstrating how to solve challenging mathematics problems using reasoning models (DeepSeek R1, Claude Extended Thinking) with:
+- Durable execution across multi-hour reasoning chains
+- Thinking token capture via `ctx.ingest()`
+- Context preservation and distillation
+- Savepoints for backtracking
+- Human-in-the-loop review
+- Benchmark runner for FrontierMath problems
+
+See [frontier_math/README.md](frontier_math/README.md) for full documentation.
