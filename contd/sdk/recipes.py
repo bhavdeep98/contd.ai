@@ -12,12 +12,12 @@ import logging
 
 if TYPE_CHECKING:
     from contd.sdk.context import ExecutionContext
-    from contd.core.context_preservation import ContextHealth
+    from contd.context.health import HealthSignals
 
 logger = logging.getLogger(__name__)
 
 
-def distill_on_decline(ctx: "ExecutionContext", health: "ContextHealth"):
+def distill_on_decline(ctx: "ExecutionContext", health: "HealthSignals"):
     """
     Auto-distill when output trend is declining.
     
@@ -27,17 +27,19 @@ def distill_on_decline(ctx: "ExecutionContext", health: "ContextHealth"):
     Usage:
         @workflow(WorkflowConfig(
             distill=my_distill_fn,
-            on_health_check=distill_on_decline,
+            on_health_warning=distill_on_decline,
         ))
     """
-    if health.output_trend == "declining" and health.reasoning_buffer_size > 0:
-        logger.info("Output declining, triggering distillation")
+    if health.output_trend == "declining" and health.buffer_bytes > 0:
+        logger.info(
+            f"Output declining ({health.output_decline_pct:.0%}), triggering distillation"
+        )
         ctx.request_distill()
 
 
-def savepoint_on_drift(ctx: "ExecutionContext", health: "ContextHealth"):
+def savepoint_on_drift(ctx: "ExecutionContext", health: "HealthSignals"):
     """
-    Auto-savepoint when retry rate spikes.
+    Auto-savepoint when retry rate spikes or multiple signals degrade.
     
     High retry rate suggests the agent is struggling.
     Creating a savepoint preserves the current reasoning state
@@ -45,21 +47,31 @@ def savepoint_on_drift(ctx: "ExecutionContext", health: "ContextHealth"):
     
     Usage:
         @workflow(WorkflowConfig(
-            on_health_check=savepoint_on_drift,
+            on_health_warning=savepoint_on_drift,
         ))
     """
-    if health.retry_rate > 0.2:
-        logger.info(f"Retry rate {health.retry_rate:.1%}, creating savepoint")
+    if health.recommendation in ("savepoint", "warning") or health.retry_rate > 0.2:
+        logger.info(
+            f"Health degraded (recommendation={health.recommendation}, "
+            f"retry_rate={health.retry_rate:.1%}), creating savepoint"
+        )
         ctx.create_savepoint({
-            "goal_summary": "Auto-savepoint due to high retry rate",
+            "goal_summary": "Auto-savepoint due to health degradation",
             "hypotheses": [],
-            "questions": ["Why is retry rate elevated?"],
-            "decisions": [],
-            "next_step": "Investigate failures",
+            "questions": ["Why is health degrading?"],
+            "decisions": [
+                f"output_trend={health.output_trend}, "
+                f"retry_rate={health.retry_rate:.2f}, "
+                f"budget_used={health.budget_used:.1%}"
+            ],
+            "next_step": "Investigate and continue",
         })
+        # Also distill if there's buffered reasoning
+        if health.buffer_bytes > 0:
+            ctx.request_distill()
 
 
-def warn_on_budget(ctx: "ExecutionContext", health: "ContextHealth"):
+def warn_on_budget(ctx: "ExecutionContext", health: "HealthSignals"):
     """
     Log warning at 80% context budget.
     
@@ -69,17 +81,17 @@ def warn_on_budget(ctx: "ExecutionContext", health: "ContextHealth"):
     Usage:
         @workflow(WorkflowConfig(
             context_budget=50_000,
-            on_health_check=warn_on_budget,
+            on_health_warning=warn_on_budget,
         ))
     """
     if health.budget_used > 0.8:
-        logger.warning(
-            f"Context budget at {health.budget_used:.0%} "
-            f"({health.total_output_bytes} / {health.budget_limit} bytes)"
-        )
+        pct = health.budget_used * 100
+        logger.warning(f"Context budget at {pct:.0f}%")
+        ctx.set_variable("_context_budget_warning", True)
+        ctx.set_variable("_context_budget_used_pct", round(pct, 1))
 
 
-def distill_and_annotate_on_budget(ctx: "ExecutionContext", health: "ContextHealth"):
+def distill_and_annotate_on_budget(ctx: "ExecutionContext", health: "HealthSignals"):
     """
     Distill and annotate when approaching budget limit.
     
@@ -90,20 +102,20 @@ def distill_and_annotate_on_budget(ctx: "ExecutionContext", health: "ContextHeal
         @workflow(WorkflowConfig(
             distill=my_distill_fn,
             context_budget=50_000,
-            on_health_check=distill_and_annotate_on_budget,
+            on_health_warning=distill_and_annotate_on_budget,
         ))
     """
     if health.budget_used > 0.9:
         ctx.annotate("Approaching context budget limit, wrapping up")
         ctx.set_variable("should_conclude", True)
-        if health.reasoning_buffer_size > 0:
+        if health.buffer_bytes > 0:
             ctx.request_distill()
     elif health.budget_used > 0.7:
-        if health.reasoning_buffer_size > 0:
+        if health.buffer_bytes > 0:
             ctx.request_distill()
 
 
-def combined_health_handler(ctx: "ExecutionContext", health: "ContextHealth"):
+def combined_health_handler(ctx: "ExecutionContext", health: "HealthSignals"):
     """
     Combined handler that applies multiple strategies.
     
@@ -115,11 +127,11 @@ def combined_health_handler(ctx: "ExecutionContext", health: "ContextHealth"):
         @workflow(WorkflowConfig(
             distill=my_distill_fn,
             context_budget=50_000,
-            on_health_check=combined_health_handler,
+            on_health_warning=combined_health_handler,
         ))
     """
     # Distill on decline
-    if health.output_trend == "declining" and health.reasoning_buffer_size > 0:
+    if health.output_trend == "declining" and health.buffer_bytes > 0:
         logger.info("Output declining, triggering distillation")
         ctx.request_distill()
     
@@ -183,3 +195,30 @@ Return JSON with:
 - key_findings: Important discoveries
 
 Be concise. Preserve critical reasoning, discard noise."""
+
+
+def llm_distill(llm_fn):
+    """
+    Wrap an LLM call function into a distill function.
+    
+    Usage:
+        def call_llm(prompt):
+            return my_client.complete(prompt)
+        
+        @workflow(WorkflowConfig(
+            distill=llm_distill(call_llm),
+        ))
+        def my_agent(query):
+            ...
+    """
+    import json
+    
+    def distill(chunks: list[str], previous: dict | None) -> dict:
+        prompt = structured_distill_prompt(chunks, previous)
+        response = llm_fn(prompt)
+        try:
+            return json.loads(response)
+        except json.JSONDecodeError:
+            return {"raw_response": response, "parse_failed": True}
+    
+    return distill

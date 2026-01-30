@@ -1,7 +1,7 @@
 from contextvars import ContextVar
 from threading import Thread, Event
-from dataclasses import dataclass, field
-from typing import Optional, Dict, Any, Callable, List
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, Optional
 import uuid
 import socket
 import logging
@@ -12,17 +12,12 @@ from contd.persistence.leases import Lease
 from contd.models.state import WorkflowState
 from contd.models.events import (
     SavepointCreatedEvent,
-    AnnotationCreatedEvent,
-    ReasoningIngestedEvent,
-    ContextDigestCreatedEvent,
+    ContextAnnotatedEvent,
+    ContextIngestedEvent,
+    ContextDigestedEvent,
 )
-from contd.core.context_preservation import (
-    ReasoningBuffer,
-    HealthTracker,
-    ContextHealth,
-    RestoredContext,
-    execute_distill,
-)
+from contd.context.ledger import ReasoningLedger, ContextDigest
+from contd.context.health import ContextHealth, HealthSignals
 from contd.sdk.errors import NoActiveWorkflow
 
 logger = logging.getLogger(__name__)
@@ -65,7 +60,7 @@ class ExecutionContext:
     - State management and extraction
     - Background heartbeat for lease renewal
     - Savepoint creation with epistemic metadata
-    - Context preservation: annotate(), ingest(), context_health()
+    - Reasoning ledger for context rot prevention
 
     The context is automatically created by the @workflow decorator
     and accessed by @step decorated functions.
@@ -83,24 +78,13 @@ class ExecutionContext:
     _step_counter: int = 0
     _heartbeat_thread: Optional[Thread] = None
     _heartbeat_stop: Optional[Event] = None
-    
-    # Context preservation
-    _reasoning_buffer: ReasoningBuffer = field(default_factory=ReasoningBuffer)
-    _health_tracker: Optional[HealthTracker] = None
-    _current_digest: Optional[dict] = None
-    _digests_created: int = 0
-    _last_digest_step: Optional[int] = None
+
+    # Context rot prevention
+    _ledger: Optional[ReasoningLedger] = None
+    _distill_fn: Optional[Callable] = None
+    _context_budget: int = 0  # bytes, 0 = unlimited
+    _on_health_warning: Optional[Callable] = None
     _distill_requested: bool = False
-    
-    # Workflow config for distillation
-    _distill_fn: Optional[Callable[[List[str], Optional[dict]], dict]] = None
-    _distill_every: Optional[int] = None
-    _distill_threshold: Optional[int] = None
-    _context_budget: Optional[int] = None
-    _on_health_check: Optional[Callable[["ExecutionContext", ContextHealth], None]] = None
-    
-    # Restored context (populated on resume)
-    _restored_context: Optional[RestoredContext] = None
 
     @classmethod
     def current(cls) -> "ExecutionContext":
@@ -124,12 +108,6 @@ class ExecutionContext:
         workflow_name: str,
         org_id: str | None = None,
         tags: dict | None = None,
-        # Context preservation config
-        distill: Callable[[List[str], Optional[dict]], dict] | None = None,
-        distill_every: int | None = None,
-        distill_threshold: int | None = None,
-        context_budget: int | None = None,
-        on_health_check: Callable[["ExecutionContext", ContextHealth], None] | None = None,
     ) -> "ExecutionContext":
         """
         Create new context or prepare for resume.
@@ -139,11 +117,6 @@ class ExecutionContext:
             workflow_name: Name of the workflow function
             org_id: Organization ID for multi-tenancy
             tags: Metadata tags for filtering/grouping
-            distill: Developer-provided function to compress reasoning chunks
-            distill_every: Trigger distillation every N steps
-            distill_threshold: Trigger distillation when buffer exceeds N chars
-            context_budget: Warn when total output exceeds N bytes
-            on_health_check: Callback fired after each step with health signals
 
         Returns:
             ExecutionContext ready for workflow execution
@@ -169,13 +142,6 @@ class ExecutionContext:
             lease=None,
             tags=tags,
             _state=None,
-            _reasoning_buffer=ReasoningBuffer(),
-            _health_tracker=HealthTracker(context_budget=context_budget),
-            _distill_fn=distill,
-            _distill_every=distill_every,
-            _distill_threshold=distill_threshold,
-            _context_budget=context_budget,
-            _on_health_check=on_health_check,
         )
 
         _current_context.set(ctx)
@@ -398,25 +364,60 @@ class ExecutionContext:
             )
 
     # =========================================================================
-    # Context Preservation Methods
+    # Context rot prevention
     # =========================================================================
 
-    def annotate(self, text: str):
+    @property
+    def ledger(self) -> ReasoningLedger:
+        """Get or create the reasoning ledger."""
+        if self._ledger is None:
+            self._ledger = ReasoningLedger()
+        return self._ledger
+
+    def configure_context(
+        self,
+        distill: Optional[Callable] = None,
+        distill_every: int = 0,
+        distill_threshold: int = 0,
+        context_budget: int = 0,
+        on_health_warning: Optional[Callable] = None,
+    ) -> None:
         """
-        Add a lightweight reasoning breadcrumb.
-        
-        One line. Optional. Developer decides what matters.
-        The engine doesn't parse it, doesn't summarize it.
-        It just stores it durably alongside the step event.
-        
-        Example:
-            ctx.annotate("Chose regression because data is tabular")
+        Configure context rot prevention. Called by @workflow decorator.
+
+        Args:
+            distill: Developer-provided function to compress reasoning.
+                     Signature: (raw_chunks: list[str], previous_digest: dict | None) -> dict
+            distill_every: Trigger distillation every N steps (0 = disabled)
+            distill_threshold: Trigger when buffer exceeds N bytes (0 = disabled)
+            context_budget: Warn when total context exceeds N bytes (0 = unlimited)
+            on_health_warning: Callback when health degrades.
+                              Signature: (ctx: ExecutionContext, health: HealthSignals) -> None
+        """
+        self._distill_fn = distill
+        self._context_budget = context_budget
+        self._on_health_warning = on_health_warning
+        self.ledger.distill_every = distill_every
+        self.ledger.distill_threshold = distill_threshold
+
+    def annotate(self, text: str) -> None:
+        """
+        Add a reasoning breadcrumb to the current step.
+
+        Lightweight, always available. The developer says what matters
+        and the engine stores it durably. One line in a step function.
+
+        Args:
+            text: Free-form reasoning note (e.g., "Chose X because Y")
         """
         step_number = self._state.step_number if self._state else 0
-        step_name = f"step_{step_number}"  # Will be overwritten by step decorator
-        
+        step_name = f"step_{step_number}"
+
+        self.ledger.annotate(step_number, step_name, text)
+
+        # Persist to journal
         self.engine.journal.append(
-            AnnotationCreatedEvent(
+            ContextAnnotatedEvent(
                 event_id=generate_id(),
                 workflow_id=self.workflow_id,
                 org_id=self.org_id,
@@ -426,220 +427,191 @@ class ExecutionContext:
                 text=text,
             )
         )
-        logger.debug(f"Annotation created at step {step_number}: {text[:50]}...")
 
-    def ingest(self, reasoning: str):
+    def ingest(self, reasoning: str) -> None:
         """
-        Ingest raw reasoning tokens into the buffer.
-        
-        When reasoning tokens are available (e.g., Claude's extended thinking),
-        pass them in. When they're not, don't. Engine doesn't care.
-        
-        The engine accumulates these raw chunks in a buffer.
-        Periodically, it calls the developer-provided distill function.
-        
-        Example:
-            if response.thinking:
-                ctx.ingest(response.thinking)
+        Accept raw reasoning tokens from the model.
+
+        Call this when the model exposes its thinking — extended thinking
+        tokens, chain-of-thought, etc. The engine buffers these and
+        periodically passes them to the developer's distill function.
+
+        When reasoning tokens aren't available, don't call this.
+        Everything else still works.
+
+        Args:
+            reasoning: Raw reasoning text from the model
         """
         if not reasoning:
             return
-            
-        self._reasoning_buffer.add(reasoning)
-        
-        # Record the ingestion event
+
+        step_number = self._state.step_number if self._state else 0
+        step_name = f"step_{step_number}"
+
+        self.ledger.ingest(reasoning)
+
+        # Persist reference to journal (not the full text — that goes in snapshot)
         self.engine.journal.append(
-            ReasoningIngestedEvent(
+            ContextIngestedEvent(
                 event_id=generate_id(),
                 workflow_id=self.workflow_id,
                 org_id=self.org_id,
                 timestamp=utcnow(),
-                step_number=self._state.step_number if self._state else 0,
-                chunk=reasoning,
-                chunk_size=len(reasoning),
+                step_number=step_number,
+                step_name=step_name,
+                chunk_bytes=len(reasoning.encode("utf-8")),
+                storage_ref="",  # Full text in snapshot, ref here
             )
         )
-        
-        logger.debug(
-            f"Ingested {len(reasoning)} chars, buffer now {self._reasoning_buffer.total_chars} chars"
+
+    def context_health(self) -> HealthSignals:
+        """
+        Get current context health from observable signals.
+
+        Queryable at any point during workflow execution.
+        Returns stats the engine computes from step metrics —
+        no semantic understanding, just side effects.
+        """
+        return ContextHealth.compute(
+            signals=self.ledger.step_signals,
+            buffer_bytes=self.ledger.raw_buffer_bytes,
+            total_context_bytes=self.ledger.total_context_bytes,
+            context_budget=self._context_budget,
+            steps_since_distill=self.ledger._steps_since_distill,
         )
 
-    def context_health(self) -> ContextHealth:
-        """
-        Get current context health signals.
-        
-        Queryable at any point during execution.
-        The developer can use it programmatically to decide
-        when to create savepoints or trigger distillation.
-        
-        Example:
-            health = ctx.context_health()
-            if health.recommendation == "distill":
-                ctx.request_distill()
-        """
-        if self._health_tracker is None:
-            self._health_tracker = HealthTracker(context_budget=self._context_budget)
-        
-        return self._health_tracker.compute_health(
-            buffer=self._reasoning_buffer,
-            digests_created=self._digests_created,
-            last_digest_step=self._last_digest_step,
-            current_step=self._state.step_number if self._state else 0,
-        )
-
-    def request_distill(self):
+    def request_distill(self) -> None:
         """
         Request distillation before the next step.
-        
-        Use this to trigger distillation on-demand rather than
-        waiting for the configured interval or threshold.
-        
-        Example:
-            health = ctx.context_health()
-            if health.output_trend == "declining":
-                ctx.request_distill()
+
+        Can be called by the developer or by health warning handlers.
+        The actual distillation happens in the step decorator's
+        post-execution hook.
         """
         self._distill_requested = True
         logger.debug("Distillation requested")
 
-    def get_restored_context(self) -> Optional[RestoredContext]:
+    def run_distill(self) -> Optional[ContextDigest]:
         """
-        Get the context that was restored on resume.
-        
-        Returns None if this is a fresh workflow (not resumed).
-        
-        The developer feeds context.digest back to their LLM prompt.
-        The agent picks up where its reasoning was, not just where
-        its data was.
-        """
-        return self._restored_context
+        Execute distillation if conditions are met.
 
-    def set_restored_context(self, context: RestoredContext):
-        """Set restored context (called by recovery)."""
-        self._restored_context = context
-        if context.digest:
-            self._current_digest = context.digest
-        self._digests_created = len(context.digest_history)
-        if context.digest_history:
-            self._last_digest_step = context.digest_history[-1].get("step")
-
-    def _maybe_distill(self):
+        Called by the @step decorator after step completion.
+        Returns the digest if distillation occurred, None otherwise.
         """
-        Check if distillation should be triggered and execute if so.
-        
-        Called after each step by the step decorator.
-        """
-        if self._distill_fn is None:
-            return
-        
-        should_distill = False
-        reason = ""
-        
-        # Check explicit request
-        if self._distill_requested:
-            should_distill = True
-            reason = "requested"
-            self._distill_requested = False
-        
-        # Check step interval
-        elif self._distill_every and self._state:
-            steps_since = (
-                self._state.step_number - (self._last_digest_step or 0)
-            )
-            if steps_since >= self._distill_every:
-                should_distill = True
-                reason = f"interval ({steps_since} steps)"
-        
-        # Check threshold
-        elif self._distill_threshold:
-            if self._reasoning_buffer.total_chars >= self._distill_threshold:
-                should_distill = True
-                reason = f"threshold ({self._reasoning_buffer.total_chars} chars)"
-        
-        if not should_distill or len(self._reasoning_buffer) == 0:
-            return
-        
-        logger.info(f"Triggering distillation: {reason}")
-        self._execute_distill()
-
-    def _execute_distill(self):
-        """Execute the distillation and record the result."""
-        chunks = self._reasoning_buffer.clear()
-        
-        # Execute developer's distill function
-        digest = execute_distill(
-            self._distill_fn,
-            chunks,
-            self._current_digest,
+        should_run = (
+            self._distill_requested
+            or self.ledger.should_distill()
         )
-        
-        # Record the digest event
-        distill_failed = digest.get("_distill_failed", False)
-        
+
+        if not should_run:
+            return None
+
+        if not self._distill_fn:
+            # No distill function provided — can't compress.
+            # Raw buffer stays as-is and will be returned on restore.
+            logger.debug("Distill triggered but no distill function configured")
+            self._distill_requested = False
+            return None
+
+        if not self.ledger.raw_buffer:
+            self._distill_requested = False
+            return None
+
+        # Call developer's distill function
+        previous = self.ledger.latest_digest.payload if self.ledger.latest_digest else None
+        raw_chunks = list(self.ledger.raw_buffer)
+        raw_byte_count = self.ledger.raw_buffer_bytes
+
+        try:
+            payload = self._distill_fn(raw_chunks, previous)
+        except Exception as e:
+            logger.error(f"Distill function failed: {e}")
+            self._distill_requested = False
+            return None
+
+        step_number = self._state.step_number if self._state else 0
+        digest_id = generate_id()
+
+        digest = ContextDigest(
+            digest_id=digest_id,
+            step_number=step_number,
+            timestamp=utcnow(),
+            payload=payload if isinstance(payload, dict) else {"result": payload},
+            raw_chunk_count=len(raw_chunks),
+            raw_byte_count=raw_byte_count,
+        )
+
+        self.ledger.accept_digest(digest)
+        self._distill_requested = False
+
+        # Persist to journal
         self.engine.journal.append(
-            ContextDigestCreatedEvent(
+            ContextDigestedEvent(
                 event_id=generate_id(),
                 workflow_id=self.workflow_id,
                 org_id=self.org_id,
                 timestamp=utcnow(),
-                step_number=self._state.step_number if self._state else 0,
-                digest=digest if not distill_failed else {},
-                chunks_processed=len(chunks),
-                distill_failed=distill_failed,
-                error=digest.get("error", "") if distill_failed else "",
-                raw_chunks=digest.get("raw_chunks", []) if distill_failed else [],
+                digest_id=digest_id,
+                step_number=step_number,
+                payload=digest.payload,
+                raw_chunk_count=digest.raw_chunk_count,
+                raw_byte_count=digest.raw_byte_count,
             )
         )
-        
-        # Update state
-        self._current_digest = digest
-        self._digests_created += 1
-        self._last_digest_step = self._state.step_number if self._state else 0
-        
-        if distill_failed:
-            logger.warning(f"Distillation failed: {digest.get('error')}")
-        else:
-            logger.info(f"Distillation complete at step {self._last_digest_step}")
 
-    def _fire_health_check(self, output_size: int, duration_ms: int, was_retry: bool = False):
+        return digest
+
+    def check_health_and_notify(self) -> Optional[HealthSignals]:
         """
-        Record step metrics and fire health check callback.
-        
-        Called after each step by the step decorator.
+        Check health and call warning handler if needed.
+
+        Called by @step decorator after step completion.
+        Returns health signals if warning handler was called.
         """
-        if self._health_tracker:
-            self._health_tracker.record_step(output_size, duration_ms, was_retry)
-        
-        if self._on_health_check:
-            health = self.context_health()
+        if not self._on_health_warning:
+            return None
+
+        health = self.context_health()
+
+        if health.recommendation in ("distill", "savepoint", "warning"):
             try:
-                self._on_health_check(self, health)
+                self._on_health_warning(self, health)
             except Exception as e:
-                logger.warning(f"Health check callback failed: {e}")
+                logger.error(f"Health warning handler failed: {e}")
 
-    def set_variable(self, key: str, value: Any):
+            return health
+
+        return None
+
+    def set_variable(self, key: str, value: Any) -> None:
         """
-        Set a workflow variable.
-        
-        Useful for health check handlers to signal state changes.
-        
-        Example:
-            def my_handler(ctx, health):
-                if health.budget_used > 0.9:
-                    ctx.set_variable("should_conclude", True)
+        Set a variable in the workflow state.
+
+        Used by recipe handlers to communicate back to the workflow
+        (e.g., setting _context_budget_warning flag).
         """
         if self._state is None:
             return
-        
-        new_vars = dict(self._state.variables)
-        new_vars[key] = value
-        
+
+        current_vars = dict(self._state.variables)
+        current_vars[key] = value
+
         self._state = WorkflowState(
             workflow_id=self._state.workflow_id,
             step_number=self._state.step_number,
-            variables=new_vars,
+            variables=current_vars,
             metadata=self._state.metadata,
             version=self._state.version,
             checksum=self._state.checksum,
             org_id=self._state.org_id,
         )
+
+    def get_restore_context(self) -> dict:
+        """
+        Get compiled context for resume — the raw materials the
+        developer uses to reconstruct agent context after a crash.
+
+        Returns everything we captured, structured for the developer.
+        Not interpretation. Raw materials.
+        """
+        return self.ledger.get_restore_context()

@@ -6,12 +6,14 @@ from .engine import ExecutionEngine, EngineConfig
 from .idempotency import IdempotencyGuard, TooManyAttempts, AttemptConflict
 from .recovery import HybridRecovery, WorkflowNotFoundError, StateCorruptionError
 from .version import __version__
-from .context_preservation import (
+
+# Re-export context preservation from new location for backward compatibility
+from contd.context import (
     ContextHealth,
-    RestoredContext,
-    ReasoningBuffer,
-    HealthTracker,
-    execute_distill,
+    HealthSignals,
+    ReasoningLedger,
+    ContextEntry,
+    ContextDigest,
 )
 
 __all__ = [
@@ -24,10 +26,10 @@ __all__ = [
     "WorkflowNotFoundError",
     "StateCorruptionError",
     "__version__",
-    # Context preservation
+    # Context preservation (re-exported from contd.context)
     "ContextHealth",
-    "RestoredContext",
-    "ReasoningBuffer",
-    "HealthTracker",
-    "execute_distill",
+    "HealthSignals",
+    "ReasoningLedger",
+    "ContextEntry",
+    "ContextDigest",
 ]

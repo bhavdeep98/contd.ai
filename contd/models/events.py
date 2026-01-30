@@ -22,10 +22,9 @@ class EventType(Enum):
     WORKFLOW_SUSPENDED = "workflow.suspended"
     WORKFLOW_RESTORED = "workflow.restored"
     WORKFLOW_COMPLETED = "workflow.completed"
-    # Context preservation events
-    ANNOTATION_CREATED = "context.annotation"
-    REASONING_INGESTED = "context.reasoning"
-    CONTEXT_DIGEST_CREATED = "context.digest"
+    CONTEXT_INGESTED = "context.ingested"
+    CONTEXT_DIGESTED = "context.digested"
+    CONTEXT_ANNOTATED = "context.annotated"
 
 
 @dataclass(frozen=True)
@@ -90,52 +89,40 @@ class SavepointCreatedEvent(BaseEvent):
             object.__setattr__(self, "decision_log", [])
 
 
-# =============================================================================
-# Context Preservation Events
-# =============================================================================
-
-
 @dataclass(frozen=True)
-class AnnotationCreatedEvent(BaseEvent):
-    """
-    Lightweight reasoning breadcrumb created by developer via ctx.annotate().
-    Step-associated for filtering on restore.
-    """
+class ContextAnnotatedEvent(BaseEvent):
+    """Developer-supplied reasoning breadcrumb attached to a step."""
+
     step_number: int = 0
     step_name: str = ""
     text: str = ""
-    event_type: Literal[EventType.ANNOTATION_CREATED] = EventType.ANNOTATION_CREATED
+    event_type: Literal[EventType.CONTEXT_ANNOTATED] = EventType.CONTEXT_ANNOTATED
 
 
 @dataclass(frozen=True)
-class ReasoningIngestedEvent(BaseEvent):
-    """
-    Raw reasoning tokens ingested via ctx.ingest().
-    Accumulated in buffer until distillation.
-    """
+class ContextIngestedEvent(BaseEvent):
+    """Raw reasoning tokens ingested from the model."""
+
     step_number: int = 0
-    chunk: str = ""
-    chunk_size: int = 0
-    event_type: Literal[EventType.REASONING_INGESTED] = EventType.REASONING_INGESTED
+    step_name: str = ""
+    chunk_bytes: int = 0
+    # Raw reasoning stored in snapshot/S3, not inline in event
+    # (reasoning tokens can be large — we only store the ref here)
+    storage_ref: str = ""
+    event_type: Literal[EventType.CONTEXT_INGESTED] = EventType.CONTEXT_INGESTED
 
 
 @dataclass(frozen=True)
-class ContextDigestCreatedEvent(BaseEvent):
-    """
-    Distilled context created by developer-provided distill function.
-    Contains compressed reasoning from accumulated chunks.
-    """
+class ContextDigestedEvent(BaseEvent):
+    """Distilled reasoning digest produced by developer's distill function."""
+
+    digest_id: str = ""
     step_number: int = 0
-    digest: dict = None  # Developer-defined structure
-    chunks_processed: int = 0
-    distill_failed: bool = False
-    error: str = ""
-    # Raw chunks included if distill failed (fallback)
-    raw_chunks: list = None
-    event_type: Literal[EventType.CONTEXT_DIGEST_CREATED] = EventType.CONTEXT_DIGEST_CREATED
+    payload: dict = None  # Whatever the distill function returned
+    raw_chunk_count: int = 0
+    raw_byte_count: int = 0
+    event_type: Literal[EventType.CONTEXT_DIGESTED] = EventType.CONTEXT_DIGESTED
 
     def __post_init__(self):
-        if self.digest is None:
-            object.__setattr__(self, "digest", {})
-        if self.raw_chunks is None:
-            object.__setattr__(self, "raw_chunks", [])
+        if self.payload is None:
+            object.__setattr__(self, "payload", {})

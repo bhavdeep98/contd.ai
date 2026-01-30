@@ -14,9 +14,10 @@ from contd.sdk.errors import (
     TooManyAttempts,
     StepExecutionFailed,
 )
-from contd.models.serialization import compute_delta
+from contd.models.serialization import compute_delta, serialize
 from contd.models.events import StepIntentionEvent, StepFailedEvent, StepCompletedEvent
 from contd.sdk.registry import WorkflowRegistry
+from typing import Callable as TypingCallable
 
 logger = logging.getLogger(__name__)
 
@@ -51,13 +52,13 @@ class WorkflowConfig:
         retry_policy: Default retry policy for steps
         tags: Metadata tags for filtering/grouping
         org_id: Organization ID for multi-tenancy
-        
-        # Context preservation
-        distill: Developer-provided function to compress reasoning chunks
-        distill_every: Trigger distillation every N steps
-        distill_threshold: Trigger distillation when buffer exceeds N chars
-        context_budget: Warn when total output exceeds N bytes
-        on_health_check: Callback fired after each step with health signals
+        distill: Developer-provided function to compress accumulated reasoning.
+                 Signature: (raw_chunks: list[str], previous_digest: dict | None) -> dict
+        distill_every: Trigger distillation every N steps (0 = disabled)
+        distill_threshold: Trigger when reasoning buffer exceeds N bytes (0 = disabled)
+        context_budget: Warn when total context exceeds N bytes (0 = unlimited)
+        on_health_warning: Callback when context health degrades.
+                          Signature: (ctx, health: HealthSignals) -> None
     """
 
     workflow_id: Optional[str] = None
@@ -65,13 +66,12 @@ class WorkflowConfig:
     retry_policy: Optional[RetryPolicy] = None
     tags: Optional[dict[str, str]] = None
     org_id: Optional[str] = None
-    
-    # Context preservation
-    distill: Optional[Callable[[list[str], Optional[dict]], dict]] = None
-    distill_every: Optional[int] = None
-    distill_threshold: Optional[int] = None
-    context_budget: Optional[int] = None
-    on_health_check: Optional[Callable] = None  # Callable[[ExecutionContext, ContextHealth], None]
+    # Context rot prevention
+    distill: Optional[TypingCallable] = None
+    distill_every: int = 0
+    distill_threshold: int = 0
+    context_budget: int = 0
+    on_health_warning: Optional[TypingCallable] = None
 
 
 def workflow(config: WorkflowConfig | None = None):
@@ -83,7 +83,6 @@ def workflow(config: WorkflowConfig | None = None):
     - Background heartbeat to maintain lease
     - State persistence and recovery on resume
     - Metrics emission for observability
-    - Context preservation with annotate(), ingest(), and distillation
 
     Example:
         >>> @workflow(WorkflowConfig(tags={"team": "platform"}))
@@ -91,15 +90,6 @@ def workflow(config: WorkflowConfig | None = None):
         ...     validate_order(order_id)
         ...     charge_payment(order_id)
         ...     ship_order(order_id)
-        
-    With context preservation:
-        >>> @workflow(WorkflowConfig(
-        ...     distill=my_distill_fn,
-        ...     distill_every=5,
-        ...     context_budget=50_000,
-        ... ))
-        ... def my_agent(query: str):
-        ...     ...
     """
 
     def decorator(fn: Callable[P, R]) -> Callable[P, R]:
@@ -108,19 +98,23 @@ def workflow(config: WorkflowConfig | None = None):
             workflow_start = time.time()
             collector = _get_collector()
 
-            # Get or create workflow context with context preservation config
+            # Get or create workflow context
             ctx = ExecutionContext.get_or_create(
                 workflow_id=config.workflow_id if config else None,
                 org_id=config.org_id if config else None,
                 workflow_name=fn.__name__,
                 tags=config.tags if config else None,
-                # Context preservation
-                distill=config.distill if config else None,
-                distill_every=config.distill_every if config else None,
-                distill_threshold=config.distill_threshold if config else None,
-                context_budget=config.context_budget if config else None,
-                on_health_check=config.on_health_check if config else None,
             )
+
+            # Configure context rot prevention
+            if config:
+                ctx.configure_context(
+                    distill=config.distill,
+                    distill_every=config.distill_every,
+                    distill_threshold=config.distill_threshold,
+                    context_budget=config.context_budget,
+                    on_health_warning=config.on_health_warning,
+                )
 
             # Emit workflow start metric
             if collector:
@@ -162,20 +156,12 @@ def workflow(config: WorkflowConfig | None = None):
                 # Check if resuming
                 if ctx.is_resuming():
                     restore_start = time.time()
-                    
-                    # Use restore_with_context to get reasoning context alongside state
-                    state, last_seq, restored_context = ctx.engine.restore_with_context(
-                        ctx.workflow_id, ctx.org_id
-                    )
+                    state = ctx.engine.restore(ctx.workflow_id)
                     restore_duration = (time.time() - restore_start) * 1000
 
                     ctx.set_state(state)
-                    ctx.set_restored_context(restored_context)
-                    
                     logger.info(
-                        f"Resumed workflow {ctx.workflow_id} from step {state.step_number} "
-                        f"with {len(restored_context.annotations)} annotations, "
-                        f"{len(restored_context.digest_history)} digests"
+                        f"Resumed workflow {ctx.workflow_id} from step {state.step_number}"
                     )
 
                     # Emit restore metrics
@@ -510,11 +496,23 @@ def step(config: StepConfig | None = None):
             if cfg.savepoint:
                 ctx.create_savepoint()
 
-            # Context preservation: fire health check and maybe distill
-            # Compute output size from result for health tracking
-            output_size = len(str(result)) if result else 0
-            ctx._fire_health_check(output_size, duration_ms, was_retry=False)
-            ctx._maybe_distill()
+            # --- Context rot prevention ---
+            # Record step signal (output size, duration, retry status)
+            output_bytes = len(serialize(result).encode("utf-8")) if result else 0
+            was_retry = attempt_id > 1
+            ctx.ledger.record_step_signal(
+                step_number=new_state.step_number,
+                step_name=fn.__name__,
+                output_bytes=output_bytes,
+                duration_ms=duration_ms,
+                was_retry=was_retry,
+            )
+
+            # Check if distillation should run
+            ctx.run_distill()
+
+            # Check health and notify handler
+            ctx.check_health_and_notify()
 
             return result
 

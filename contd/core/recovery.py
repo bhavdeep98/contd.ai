@@ -2,7 +2,7 @@
 Hybrid recovery strategy combining snapshots and event replay.
 """
 
-from typing import Any, List, Tuple, Optional
+from typing import Any, List, Tuple
 from dataclasses import asdict
 import hashlib
 import logging
@@ -10,15 +10,14 @@ import logging
 from ..models.state import WorkflowState
 from ..models.events import (
     StepCompletedEvent,
-    AnnotationCreatedEvent,
-    ReasoningIngestedEvent,
-    ContextDigestCreatedEvent,
-    SavepointCreatedEvent,
+    ContextAnnotatedEvent,
+    ContextIngestedEvent,
+    ContextDigestedEvent,
 )
 from ..models.serialization import apply_delta, serialize
 from ..persistence.journal import EventJournal
 from ..persistence.snapshots import SnapshotStore
-from .context_preservation import RestoredContext
+from ..context.ledger import ReasoningLedger, ContextEntry, ContextDigest
 
 logger = logging.getLogger(__name__)
 
@@ -93,113 +92,57 @@ class HybridRecovery:
 
     def restore_with_context(
         self, workflow_id: str, org_id: str, validate_checksums: bool = True
-    ) -> Tuple[WorkflowState, int, RestoredContext]:
+    ) -> Tuple[WorkflowState, int, dict]:
         """
         Restore workflow state AND reasoning context.
-        
-        Returns:
-            Tuple of (restored_state, last_event_seq, context)
-            
-        The context includes:
-        - digest: Latest distilled reasoning context
-        - undigested: Raw chunks since last distill
-        - annotations: Step-associated breadcrumbs
-        - digest_history: Full audit trail of digests
-        - savepoints: Epistemic metadata from savepoints
-        - Execution stats (steps, output bytes, durations)
-        """
-        # First, do normal state restore
-        state, last_event_seq = self.restore(workflow_id, org_id, validate_checksums)
-        
-        # Then, extract context from all events
-        context = self._extract_context(workflow_id, org_id)
-        
-        return state, last_event_seq, context
 
-    def _extract_context(self, workflow_id: str, org_id: str) -> RestoredContext:
+        Returns:
+            Tuple of (restored_state, last_event_seq, context_dict)
+
+        The context_dict contains:
+            - annotations: step-associated reasoning breadcrumbs
+            - digest: latest distilled reasoning (if any)
+            - digest_history: all digests for full trail
+            - undigested: raw reasoning since last distill
         """
-        Extract reasoning context from event journal.
-        
-        Scans all events to build:
-        - Annotations (step-associated)
-        - Digest history
-        - Undigested reasoning chunks
-        - Savepoint metadata
-        - Execution stats
-        """
-        context = RestoredContext()
-        
-        # Get ALL events (not just after snapshot) for full context
-        events = self.journal.get_events(
+        # Restore state as normal
+        state, last_event_seq = self.restore(workflow_id, org_id, validate_checksums)
+
+        # Now replay all events to reconstruct context
+        # (context events are lightweight — annotations, ingest refs, digests)
+        all_events = self.journal.get_events(
             workflow_id,
             org_id=org_id,
             after_seq=-1,
-            order_by="event_seq ASC",
-            validate_checksums=False,  # Context extraction doesn't need validation
+            validate_checksums=False,  # Already validated state
         )
-        
-        last_digest_seq = -1
-        
-        for event in events:
-            event_seq = getattr(event, "event_seq", 0)
-            
-            if isinstance(event, AnnotationCreatedEvent):
-                context.annotations.append({
-                    "step": event.step_number,
-                    "step_name": event.step_name,
-                    "text": event.text,
-                })
-            
-            elif isinstance(event, ContextDigestCreatedEvent):
-                digest_entry = {
-                    "step": event.step_number,
-                    "digest": event.digest,
-                    "chunks_processed": event.chunks_processed,
-                    "failed": event.distill_failed,
-                }
-                if event.distill_failed:
-                    digest_entry["error"] = event.error
-                    digest_entry["raw_chunks"] = event.raw_chunks
-                
-                context.digest_history.append(digest_entry)
-                
-                # Track latest successful digest
-                if not event.distill_failed:
-                    context.digest = event.digest
-                else:
-                    # Failed digest still counts as "latest" for raw chunk access
-                    context.digest = {
-                        "_distill_failed": True,
-                        "raw_chunks": event.raw_chunks,
-                        "error": event.error,
-                    }
-                
-                last_digest_seq = event_seq
-            
-            elif isinstance(event, ReasoningIngestedEvent):
-                # Only include chunks AFTER the last digest
-                if event_seq > last_digest_seq:
-                    context.undigested.append(event.chunk)
-            
-            elif isinstance(event, SavepointCreatedEvent):
-                context.savepoints.append({
-                    "step": event.step_number,
-                    "savepoint_id": event.savepoint_id,
-                    "goal_summary": event.goal_summary,
-                    "hypotheses": event.current_hypotheses,
-                    "questions": event.open_questions,
-                    "decisions": event.decision_log,
-                    "next_step": event.next_step,
-                })
-            
-            elif isinstance(event, StepCompletedEvent):
-                context.steps_completed += 1
-                context.step_durations.append(event.duration_ms)
-                # Estimate output size from delta
-                if event.state_delta:
-                    context.total_output_bytes += len(str(event.state_delta))
-        
-        return context
+
+        ledger = ReasoningLedger()
+
+        for event in all_events:
+            if isinstance(event, ContextAnnotatedEvent):
+                ledger.annotate(
+                    step_number=event.step_number,
+                    step_name=event.step_name,
+                    text=event.text,
+                )
+            elif isinstance(event, ContextDigestedEvent):
+                digest = ContextDigest(
+                    digest_id=event.digest_id,
+                    step_number=event.step_number,
+                    timestamp=event.timestamp,
+                    payload=event.payload,
+                    raw_chunk_count=event.raw_chunk_count,
+                    raw_byte_count=event.raw_byte_count,
+                )
+                ledger.digests.append(digest)
+            elif isinstance(event, ContextIngestedEvent):
+                # We don't have the raw text here (stored in snapshot),
+                # but we track that ingestion happened
+                pass
+
+        context = ledger.get_restore_context()
+        return state, last_event_seq, context
 
     def restore_to_point(
         self, workflow_id: str, org_id: str, target_seq: int
