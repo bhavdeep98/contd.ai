@@ -1,0 +1,24 @@
+Artin's Primitive Root Density Problem (Tier 3)
+
+Let a = 2. Define S(a, X) to be the set of primes p ≤ X for which a is a primitive root modulo p.
+
+Artin's conjecture predicts that the density of such primes is given by Artin's constant C_Artin multiplied by a correction factor depending on a.
+
+For a = 2, compute the following:
+
+1. Let π_2(X) = |S(2, X)| be the count of primes p ≤ X for which 2 is a primitive root modulo p.
+
+2. Compute the ratio R(X) = π_2(X) / π(X), where π(X) is the prime counting function.
+
+3. Find the value of X in the range [10^6, 10^7] that maximizes the absolute difference |R(X) - C_Artin|, where C_Artin ≈ 0.3739558136 is Artin's constant.
+
+4. For that value of X, compute the integer N = floor(10^8 * |R(X) - C_Artin|).
+
+Return N as your answer.
+
+Notes:
+- A primitive root modulo p is an integer g such that g^k mod p generates all non-zero residues modulo p for k = 1, 2, ..., p-1.
+- You may use computational tools to verify your answer.
+- The answer should be deterministic and verifiable.
+
+Expected computation time: Several hours for an expert mathematician with computational tools.

@@ -1,0 +1,3 @@
+In how many ways can you tile a 3×n rectangle with 1×3 tiles?
+
+Derive a recurrence relation and find a closed-form formula.

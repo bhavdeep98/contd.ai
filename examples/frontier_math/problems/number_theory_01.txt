@@ -1,0 +1,3 @@
+Prove that for all primes p > 3, p^2 - 1 is divisible by 24.
+
+Hint: Consider the factorization of p^2 - 1 and properties of consecutive integers.

@@ -1,0 +1,3 @@
+Find all integer solutions to the equation x^3 + y^3 = z^3 + 3.
+
+Show your reasoning and prove that your solution set is complete.
