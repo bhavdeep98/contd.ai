@@ -117,9 +117,8 @@ class TestMetricsCollector:
             plan_type="enterprise"
         )
         
-        # Check billing metric
+        # Check billing metric (user_id is not a label to prevent cardinality explosion)
         metric = managed_steps_total.labels(
-            user_id="user_456",
             workflow_name="test_workflow",
             plan_type="enterprise"
         )
