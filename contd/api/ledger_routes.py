@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 # --- Models ---
 
+
 class ReviewStatus(str, Enum):
     PENDING = "pending"
     APPROVED = "approved"
@@ -57,6 +58,7 @@ class StepSignalView(BaseModel):
 
 class ReasoningTraceView(BaseModel):
     """Complete reasoning trace for a workflow step."""
+
     step_number: int
     step_name: str
     annotation: Optional[AnnotationView] = None
@@ -68,6 +70,7 @@ class ReasoningTraceView(BaseModel):
 
 class LedgerSummary(BaseModel):
     """High-level ledger statistics."""
+
     workflow_id: str
     total_steps: int
     total_annotations: int
@@ -79,6 +82,7 @@ class LedgerSummary(BaseModel):
 
 class LedgerTimeline(BaseModel):
     """Timeline view of all ledger entries."""
+
     workflow_id: str
     entries: List[Dict[str, Any]]
     summary: LedgerSummary
@@ -86,6 +90,7 @@ class LedgerTimeline(BaseModel):
 
 class ReviewRequest(BaseModel):
     """Request to review a reasoning step."""
+
     status: ReviewStatus
     feedback: Optional[str] = None
     suggested_revision: Optional[str] = None
@@ -104,6 +109,7 @@ _reviews: Dict[str, Dict[int, ReviewResponse]] = {}
 
 # --- Endpoints ---
 
+
 @router.get("/summary", response_model=LedgerSummary)
 async def get_ledger_summary(
     workflow_id: str,
@@ -111,23 +117,25 @@ async def get_ledger_summary(
 ):
     """Get high-level summary of the reasoning ledger."""
     engine = ExecutionEngine.get_instance()
-    
+
     try:
         state, _ = engine.restore(workflow_id, org_id=ctx.org_id)
     except Exception as e:
         raise HTTPException(status_code=404, detail=f"Workflow not found: {e}")
-    
+
     # Get ledger from state metadata
     ledger_data = state.metadata.get("reasoning_ledger", {})
-    
+
     annotations = ledger_data.get("annotations", [])
     digests = ledger_data.get("digests", [])
     raw_buffer_bytes = ledger_data.get("raw_buffer_bytes", 0)
-    
+
     # Count pending reviews
     workflow_reviews = _reviews.get(workflow_id, {})
-    pending = sum(1 for r in workflow_reviews.values() if r.status == ReviewStatus.PENDING)
-    
+    pending = sum(
+        1 for r in workflow_reviews.values() if r.status == ReviewStatus.PENDING
+    )
+
     return LedgerSummary(
         workflow_id=workflow_id,
         total_steps=state.step_number,
@@ -146,38 +154,42 @@ async def get_ledger_timeline(
 ):
     """Get chronological timeline of all ledger entries for visualization."""
     engine = ExecutionEngine.get_instance()
-    
+
     try:
         state, _ = engine.restore(workflow_id, org_id=ctx.org_id)
     except Exception as e:
         raise HTTPException(status_code=404, detail=f"Workflow not found: {e}")
-    
+
     ledger_data = state.metadata.get("reasoning_ledger", {})
     entries = []
-    
+
     # Collect all entries with timestamps
     for ann in ledger_data.get("annotations", []):
-        entries.append({
-            "type": "annotation",
-            "timestamp": ann.get("timestamp"),
-            "step_number": ann.get("step_number"),
-            "step_name": ann.get("step_name"),
-            "content": ann.get("text"),
-        })
-    
+        entries.append(
+            {
+                "type": "annotation",
+                "timestamp": ann.get("timestamp"),
+                "step_number": ann.get("step_number"),
+                "step_name": ann.get("step_name"),
+                "content": ann.get("text"),
+            }
+        )
+
     for digest in ledger_data.get("digests", []):
-        entries.append({
-            "type": "digest",
-            "timestamp": digest.get("timestamp"),
-            "step_number": digest.get("step_number"),
-            "digest_id": digest.get("digest_id"),
-            "payload": digest.get("payload"),
-            "compression_ratio": _calc_compression_ratio(digest),
-        })
-    
+        entries.append(
+            {
+                "type": "digest",
+                "timestamp": digest.get("timestamp"),
+                "step_number": digest.get("step_number"),
+                "digest_id": digest.get("digest_id"),
+                "payload": digest.get("payload"),
+                "compression_ratio": _calc_compression_ratio(digest),
+            }
+        )
+
     # Sort by timestamp
     entries.sort(key=lambda x: x.get("timestamp", ""))
-    
+
     # Add review status to each entry
     workflow_reviews = _reviews.get(workflow_id, {})
     for entry in entries:
@@ -186,9 +198,9 @@ async def get_ledger_timeline(
             entry["review_status"] = workflow_reviews[step_num].status
         else:
             entry["review_status"] = ReviewStatus.PENDING
-    
+
     summary = await get_ledger_summary(workflow_id, ctx)
-    
+
     return LedgerTimeline(
         workflow_id=workflow_id,
         entries=entries,
@@ -204,18 +216,18 @@ async def get_reasoning_traces(
 ):
     """Get detailed reasoning traces, optionally filtered by step."""
     engine = ExecutionEngine.get_instance()
-    
+
     try:
         state, _ = engine.restore(workflow_id, org_id=ctx.org_id)
     except Exception as e:
         raise HTTPException(status_code=404, detail=f"Workflow not found: {e}")
-    
+
     ledger_data = state.metadata.get("reasoning_ledger", {})
     traces = _build_traces(ledger_data, workflow_id)
-    
+
     if step_number is not None:
         traces = [t for t in traces if t.step_number == step_number]
-    
+
     return traces
 
 
@@ -227,10 +239,12 @@ async def get_step_trace(
 ):
     """Get detailed reasoning trace for a specific step."""
     traces = await get_reasoning_traces(workflow_id, step_number, ctx)
-    
+
     if not traces:
-        raise HTTPException(status_code=404, detail=f"No trace found for step {step_number}")
-    
+        raise HTTPException(
+            status_code=404, detail=f"No trace found for step {step_number}"
+        )
+
     return traces[0]
 
 
@@ -243,7 +257,7 @@ async def review_step(
 ):
     """
     Submit human review for a reasoning step.
-    
+
     This enables human-in-the-loop oversight of agent reasoning.
     """
     # Verify workflow exists
@@ -252,26 +266,28 @@ async def review_step(
         engine.restore(workflow_id, org_id=ctx.org_id)
     except Exception as e:
         raise HTTPException(status_code=404, detail=f"Workflow not found: {e}")
-    
+
     # Store review
     if workflow_id not in _reviews:
         _reviews[workflow_id] = {}
-    
+
     review = ReviewResponse(
         step_number=step_number,
         status=request.status,
         reviewed_at=datetime.utcnow().isoformat(),
         reviewer_feedback=request.feedback,
     )
-    
+
     _reviews[workflow_id][step_number] = review
-    
-    logger.info(f"Step {step_number} of workflow {workflow_id} reviewed: {request.status}")
-    
+
+    logger.info(
+        f"Step {step_number} of workflow {workflow_id} reviewed: {request.status}"
+    )
+
     # If rejected, could trigger workflow pause/rollback
     if request.status == ReviewStatus.REJECTED:
         logger.warning(f"Step {step_number} rejected - workflow may need intervention")
-    
+
     return review
 
 
@@ -284,10 +300,10 @@ async def get_reviews(
     """Get all reviews for a workflow, optionally filtered by status."""
     workflow_reviews = _reviews.get(workflow_id, {})
     reviews = list(workflow_reviews.values())
-    
+
     if status:
         reviews = [r for r in reviews if r.status == status]
-    
+
     return reviews
 
 
@@ -298,14 +314,14 @@ async def get_undigested_reasoning(
 ):
     """Get raw undigested reasoning buffer for review."""
     engine = ExecutionEngine.get_instance()
-    
+
     try:
         state, _ = engine.restore(workflow_id, org_id=ctx.org_id)
     except Exception as e:
         raise HTTPException(status_code=404, detail=f"Workflow not found: {e}")
-    
+
     ledger_data = state.metadata.get("reasoning_ledger", {})
-    
+
     return {
         "workflow_id": workflow_id,
         "raw_buffer": ledger_data.get("raw_buffer", []),
@@ -316,10 +332,11 @@ async def get_undigested_reasoning(
 
 # --- Helper Functions ---
 
+
 def _calculate_context_bytes(ledger_data: dict) -> int:
     """Calculate total context bytes from ledger data."""
     annotation_bytes = sum(
-        len(a.get("text", "").encode("utf-8")) 
+        len(a.get("text", "").encode("utf-8"))
         for a in ledger_data.get("annotations", [])
     )
     digest_bytes = sum(
@@ -343,7 +360,7 @@ def _build_traces(ledger_data: dict, workflow_id: str) -> List[ReasoningTraceVie
     """Build reasoning traces from ledger data."""
     traces_by_step: Dict[int, ReasoningTraceView] = {}
     workflow_reviews = _reviews.get(workflow_id, {})
-    
+
     # Process annotations
     for ann in ledger_data.get("annotations", []):
         step_num = ann.get("step_number", 0)
@@ -358,7 +375,7 @@ def _build_traces(ledger_data: dict, workflow_id: str) -> List[ReasoningTraceVie
             timestamp=ann.get("timestamp"),
             text=ann.get("text"),
         )
-    
+
     # Process digests
     for digest in ledger_data.get("digests", []):
         step_num = digest.get("step_number", 0)
@@ -375,10 +392,10 @@ def _build_traces(ledger_data: dict, workflow_id: str) -> List[ReasoningTraceVie
             raw_chunk_count=digest.get("raw_chunk_count"),
             raw_byte_count=digest.get("raw_byte_count"),
         )
-    
+
     # Add review status
     for step_num, trace in traces_by_step.items():
         if step_num in workflow_reviews:
             trace.review_status = workflow_reviews[step_num].status
-    
+
     return sorted(traces_by_step.values(), key=lambda t: t.step_number)

@@ -118,6 +118,7 @@ async def ledger_viewer():
         return FileResponse(html_path)
     return {"error": "Ledger viewer not found"}
 
+
 # gRPC Server
 grpc_server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
 workflow_pb2_grpc.add_WorkflowServiceServicer_to_server(WorkflowService(), grpc_server)
