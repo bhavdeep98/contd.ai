@@ -192,7 +192,10 @@ class ReasoningLedger:
         if self.distill_every > 0 and self._steps_since_distill >= self.distill_every:
             return True
 
-        if self.distill_threshold > 0 and self.raw_buffer_bytes >= self.distill_threshold:
+        if (
+            self.distill_threshold > 0
+            and self.raw_buffer_bytes >= self.distill_threshold
+        ):
             return True
 
         return False
@@ -216,12 +219,8 @@ class ReasoningLedger:
     @property
     def total_context_bytes(self) -> int:
         """Total bytes of all context (annotations + buffer + digests)."""
-        annotation_bytes = sum(
-            len(a.text.encode("utf-8")) for a in self.annotations
-        )
-        digest_bytes = sum(
-            len(str(d.payload).encode("utf-8")) for d in self.digests
-        )
+        annotation_bytes = sum(len(a.text.encode("utf-8")) for a in self.annotations)
+        digest_bytes = sum(len(str(d.payload).encode("utf-8")) for d in self.digests)
         return annotation_bytes + self.raw_buffer_bytes + digest_bytes
 
     def to_dict(self) -> dict:
@@ -243,9 +242,7 @@ class ReasoningLedger:
         ]
         ledger.raw_buffer = d.get("raw_buffer", [])
         ledger.raw_buffer_bytes = d.get("raw_buffer_bytes", 0)
-        ledger.digests = [
-            ContextDigest.from_dict(dig) for dig in d.get("digests", [])
-        ]
+        ledger.digests = [ContextDigest.from_dict(dig) for dig in d.get("digests", [])]
         ledger._steps_since_distill = d.get("steps_since_distill", 0)
         return ledger
 

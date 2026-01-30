@@ -19,7 +19,7 @@ async def get_auth_context(
 ) -> AuthContext:
     """
     Extract auth context from request.
-    
+
     For SDK usage, expects:
     - X-API-Key header (validated by hosted platform)
     - X-Organization-Id header

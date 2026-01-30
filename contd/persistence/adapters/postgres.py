@@ -215,10 +215,11 @@ class PostgresAdapter:
     def create_workflow_sequence(self, workflow_id: str):
         """Create a sequence for workflow event ordering."""
         import re
+
         # Validate workflow_id to prevent SQL injection
-        if not re.match(r'^[a-zA-Z0-9_-]+$', workflow_id):
+        if not re.match(r"^[a-zA-Z0-9_-]+$", workflow_id):
             raise ValueError(f"Invalid workflow_id format: {workflow_id}")
-        
+
         seq_name = f"event_seq_{workflow_id.replace('-', '_')}"
 
         with self.cursor() as cur:
@@ -228,10 +229,11 @@ class PostgresAdapter:
     def get_next_event_seq(self, workflow_id: str) -> int:
         """Get next event sequence number for a workflow."""
         import re
+
         # Validate workflow_id to prevent SQL injection
-        if not re.match(r'^[a-zA-Z0-9_-]+$', workflow_id):
+        if not re.match(r"^[a-zA-Z0-9_-]+$", workflow_id):
             raise ValueError(f"Invalid workflow_id format: {workflow_id}")
-        
+
         seq_name = f"event_seq_{workflow_id.replace('-', '_')}"
 
         # Ensure sequence exists

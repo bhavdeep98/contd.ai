@@ -20,10 +20,10 @@ logger = logging.getLogger(__name__)
 def distill_on_decline(ctx: "ExecutionContext", health: "HealthSignals"):
     """
     Auto-distill when output trend is declining.
-    
+
     Declining output often indicates the agent is losing detail
     as context degrades. Distilling preserves the reasoning.
-    
+
     Usage:
         @workflow(WorkflowConfig(
             distill=my_distill_fn,
@@ -40,11 +40,11 @@ def distill_on_decline(ctx: "ExecutionContext", health: "HealthSignals"):
 def savepoint_on_drift(ctx: "ExecutionContext", health: "HealthSignals"):
     """
     Auto-savepoint when retry rate spikes or multiple signals degrade.
-    
+
     High retry rate suggests the agent is struggling.
     Creating a savepoint preserves the current reasoning state
     before things get worse.
-    
+
     Usage:
         @workflow(WorkflowConfig(
             on_health_warning=savepoint_on_drift,
@@ -55,17 +55,19 @@ def savepoint_on_drift(ctx: "ExecutionContext", health: "HealthSignals"):
             f"Health degraded (recommendation={health.recommendation}, "
             f"retry_rate={health.retry_rate:.1%}), creating savepoint"
         )
-        ctx.create_savepoint({
-            "goal_summary": "Auto-savepoint due to health degradation",
-            "hypotheses": [],
-            "questions": ["Why is health degrading?"],
-            "decisions": [
-                f"output_trend={health.output_trend}, "
-                f"retry_rate={health.retry_rate:.2f}, "
-                f"budget_used={health.budget_used:.1%}"
-            ],
-            "next_step": "Investigate and continue",
-        })
+        ctx.create_savepoint(
+            {
+                "goal_summary": "Auto-savepoint due to health degradation",
+                "hypotheses": [],
+                "questions": ["Why is health degrading?"],
+                "decisions": [
+                    f"output_trend={health.output_trend}, "
+                    f"retry_rate={health.retry_rate:.2f}, "
+                    f"budget_used={health.budget_used:.1%}"
+                ],
+                "next_step": "Investigate and continue",
+            }
+        )
         # Also distill if there's buffered reasoning
         if health.buffer_bytes > 0:
             ctx.request_distill()
@@ -74,10 +76,10 @@ def savepoint_on_drift(ctx: "ExecutionContext", health: "HealthSignals"):
 def warn_on_budget(ctx: "ExecutionContext", health: "HealthSignals"):
     """
     Log warning at 80% context budget.
-    
+
     Gives the developer visibility into budget consumption
     without taking automatic action.
-    
+
     Usage:
         @workflow(WorkflowConfig(
             context_budget=50_000,
@@ -94,10 +96,10 @@ def warn_on_budget(ctx: "ExecutionContext", health: "HealthSignals"):
 def distill_and_annotate_on_budget(ctx: "ExecutionContext", health: "HealthSignals"):
     """
     Distill and annotate when approaching budget limit.
-    
+
     More aggressive than warn_on_budget - actually takes action
     to compress context before hitting the limit.
-    
+
     Usage:
         @workflow(WorkflowConfig(
             distill=my_distill_fn,
@@ -118,11 +120,11 @@ def distill_and_annotate_on_budget(ctx: "ExecutionContext", health: "HealthSigna
 def combined_health_handler(ctx: "ExecutionContext", health: "HealthSignals"):
     """
     Combined handler that applies multiple strategies.
-    
+
     - Distill on declining output
-    - Savepoint on high retry rate  
+    - Savepoint on high retry rate
     - Warn on budget
-    
+
     Usage:
         @workflow(WorkflowConfig(
             distill=my_distill_fn,
@@ -134,14 +136,16 @@ def combined_health_handler(ctx: "ExecutionContext", health: "HealthSignals"):
     if health.output_trend == "declining" and health.buffer_bytes > 0:
         logger.info("Output declining, triggering distillation")
         ctx.request_distill()
-    
+
     # Savepoint on drift
     if health.retry_rate > 0.2:
         logger.info(f"Retry rate {health.retry_rate:.1%}, creating savepoint")
-        ctx.create_savepoint({
-            "goal_summary": "Auto-savepoint due to high retry rate",
-        })
-    
+        ctx.create_savepoint(
+            {
+                "goal_summary": "Auto-savepoint due to high retry rate",
+            }
+        )
+
     # Warn on budget
     if health.budget_used > 0.8:
         logger.warning(f"Context budget at {health.budget_used:.0%}")
@@ -155,7 +159,7 @@ def combined_health_handler(ctx: "ExecutionContext", health: "HealthSignals"):
 def simple_distill(raw_chunks: list[str], previous_digest: dict | None) -> dict:
     """
     Simple distill that just keeps the last N chunks.
-    
+
     No LLM call, cheap, lossy. Good for testing or when
     you don't need sophisticated summarization.
     """
@@ -169,12 +173,14 @@ def simple_distill(raw_chunks: list[str], previous_digest: dict | None) -> dict:
     }
 
 
-def structured_distill_prompt(raw_chunks: list[str], previous_digest: dict | None) -> str:
+def structured_distill_prompt(
+    raw_chunks: list[str], previous_digest: dict | None
+) -> str:
     """
     Returns a prompt for LLM-based distillation.
-    
+
     Use this with your LLM client:
-    
+
         def my_distill_fn(chunks, prev):
             prompt = structured_distill_prompt(chunks, prev)
             response = my_llm.complete(prompt)
@@ -200,11 +206,11 @@ Be concise. Preserve critical reasoning, discard noise."""
 def llm_distill(llm_fn):
     """
     Wrap an LLM call function into a distill function.
-    
+
     Usage:
         def call_llm(prompt):
             return my_client.complete(prompt)
-        
+
         @workflow(WorkflowConfig(
             distill=llm_distill(call_llm),
         ))
@@ -212,7 +218,7 @@ def llm_distill(llm_fn):
             ...
     """
     import json
-    
+
     def distill(chunks: list[str], previous: dict | None) -> dict:
         prompt = structured_distill_prompt(chunks, previous)
         response = llm_fn(prompt)
@@ -220,5 +226,5 @@ def llm_distill(llm_fn):
             return json.loads(response)
         except json.JSONDecodeError:
             return {"raw_response": response, "parse_failed": True}
-    
+
     return distill

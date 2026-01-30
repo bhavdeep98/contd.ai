@@ -47,17 +47,19 @@ def savepoint_on_drift(ctx, health) -> None:
             f"[recipe:savepoint_on_drift] Health degraded "
             f"(recommendation={health.recommendation}), creating savepoint"
         )
-        ctx.create_savepoint({
-            "goal_summary": "Auto-savepoint: context health degraded",
-            "hypotheses": [],
-            "questions": [],
-            "decisions": [
-                f"Auto-savepoint triggered: output_trend={health.output_trend}, "
-                f"retry_rate={health.retry_rate:.2f}, "
-                f"budget_used={health.budget_used:.1%}"
-            ],
-            "next_step": "continue_with_degraded_context",
-        })
+        ctx.create_savepoint(
+            {
+                "goal_summary": "Auto-savepoint: context health degraded",
+                "hypotheses": [],
+                "questions": [],
+                "decisions": [
+                    f"Auto-savepoint triggered: output_trend={health.output_trend}, "
+                    f"retry_rate={health.retry_rate:.2f}, "
+                    f"budget_used={health.budget_used:.1%}"
+                ],
+                "next_step": "continue_with_degraded_context",
+            }
+        )
 
         # Also distill if there's buffered reasoning
         if health.buffer_bytes > 0:
@@ -73,8 +75,6 @@ def warn_on_budget(ctx, health) -> None:
     """
     if health.budget_used > 0.8:
         pct = health.budget_used * 100
-        logger.warning(
-            f"[recipe:warn_on_budget] Context budget at {pct:.0f}%"
-        )
+        logger.warning(f"[recipe:warn_on_budget] Context budget at {pct:.0f}%")
         ctx.set_variable("_context_budget_warning", True)
         ctx.set_variable("_context_budget_used_pct", round(pct, 1))

@@ -132,20 +132,21 @@ class InMemoryRateLimiter:
         now = time.monotonic()
         if now - self._last_cleanup < self.CLEANUP_INTERVAL:
             return
-        
+
         async with self._lock:
             self._last_cleanup = now
             stale_keys = [
-                key for key, last_access in self._last_access.items()
+                key
+                for key, last_access in self._last_access.items()
                 if now - last_access > self.MAX_INACTIVE_AGE
             ]
-            
+
             for key in stale_keys:
                 self._minute_windows.pop(key, None)
                 self._hour_windows.pop(key, None)
                 self._bursts.pop(key, None)
                 self._last_access.pop(key, None)
-            
+
             if stale_keys:
                 logger.debug(f"Cleaned up {len(stale_keys)} stale rate limit entries")
 
@@ -153,10 +154,10 @@ class InMemoryRateLimiter:
         """Get or create rate limit windows for a key."""
         # Periodically cleanup stale entries
         await self._cleanup_stale_entries()
-        
+
         async with self._lock:
             self._last_access[key] = time.monotonic()
-            
+
             if key not in self._minute_windows:
                 self._minute_windows[key] = SlidingWindowCounter(
                     60, self.config.requests_per_minute

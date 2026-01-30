@@ -96,7 +96,11 @@ class ContextHealth:
             )
 
         recent = signals[-window:]
-        older = signals[-(window * 2) : -window] if len(signals) > window else signals[: len(signals) // 2]
+        older = (
+            signals[-(window * 2) : -window]
+            if len(signals) > window
+            else signals[: len(signals) // 2]
+        )
 
         # Output trend
         output_trend, output_decline = _compute_output_trend(recent, older)
@@ -108,12 +112,19 @@ class ContextHealth:
         duration_trend, duration_factor = _compute_duration_trend(recent, older)
 
         # Budget usage
-        budget_used = (total_context_bytes / context_budget) if context_budget > 0 else 0.0
+        budget_used = (
+            (total_context_bytes / context_budget) if context_budget > 0 else 0.0
+        )
 
         # Recommendation
         recommendation = _compute_recommendation(
-            output_trend, output_decline, retry_rate, duration_factor,
-            budget_used, buffer_bytes, steps_since_distill,
+            output_trend,
+            output_decline,
+            retry_rate,
+            duration_factor,
+            budget_used,
+            buffer_bytes,
+            steps_since_distill,
         )
 
         return HealthSignals(
@@ -129,9 +140,7 @@ class ContextHealth:
         )
 
 
-def _compute_output_trend(
-    recent: List[StepSignal], older: List[StepSignal]
-) -> tuple:
+def _compute_output_trend(recent: List[StepSignal], older: List[StepSignal]) -> tuple:
     """Compare recent output sizes to older output sizes."""
     if not older:
         return "unknown", 0.0
@@ -152,9 +161,7 @@ def _compute_output_trend(
         return "stable", change_pct
 
 
-def _compute_duration_trend(
-    recent: List[StepSignal], older: List[StepSignal]
-) -> tuple:
+def _compute_duration_trend(recent: List[StepSignal], older: List[StepSignal]) -> tuple:
     """Detect duration spikes (agent struggling)."""
     if not older:
         return "unknown", 1.0

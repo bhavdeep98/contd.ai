@@ -104,9 +104,10 @@ class EventJournal:
         # Fallback: use parameterized query with safe sequence naming
         # Validate workflow_id to prevent SQL injection
         import re
-        if not re.match(r'^[a-zA-Z0-9_-]+$', workflow_id):
+
+        if not re.match(r"^[a-zA-Z0-9_-]+$", workflow_id):
             raise ValueError(f"Invalid workflow_id format: {workflow_id}")
-        
+
         safe_id = workflow_id.replace("-", "_")
         # Use parameterized approach - create sequence if needed first
         try:

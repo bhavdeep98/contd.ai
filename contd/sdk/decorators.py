@@ -155,7 +155,9 @@ def workflow(config: WorkflowConfig | None = None):
                 # Check if resuming
                 if ctx.is_resuming():
                     restore_start = time.time()
-                    state, last_event_seq = ctx.engine.restore(ctx.workflow_id, ctx.org_id)
+                    state, last_event_seq = ctx.engine.restore(
+                        ctx.workflow_id, ctx.org_id
+                    )
                     restore_duration = (time.time() - restore_start) * 1000
 
                     ctx.set_state(state)
@@ -184,7 +186,7 @@ def workflow(config: WorkflowConfig | None = None):
 
                 # Mark complete
                 final_state = ctx.get_state()
-                last_seq = getattr(ctx, '_last_event_seq', 0)
+                last_seq = getattr(ctx, "_last_event_seq", 0)
                 ctx.engine.complete_workflow(ctx.workflow_id, final_state, last_seq)
 
                 # Emit completion metric
@@ -492,7 +494,7 @@ def step(config: StepConfig | None = None):
 
             # Checkpoint if configured
             if cfg.checkpoint:
-                last_seq = getattr(ctx, '_last_event_seq', 0)
+                last_seq = getattr(ctx, "_last_event_seq", 0)
                 ctx.engine.maybe_snapshot(new_state, last_seq)
                 ctx._last_event_seq = last_seq
 

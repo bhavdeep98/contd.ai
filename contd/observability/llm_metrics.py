@@ -102,16 +102,16 @@ class LLMMetricsCollector:
     """
     Collector for LLM-specific metrics.
     """
-    
+
     _instance: Optional["LLMMetricsCollector"] = None
-    
+
     @classmethod
     def get_instance(cls) -> "LLMMetricsCollector":
         """Get singleton instance."""
         if cls._instance is None:
             cls._instance = cls()
         return cls._instance
-    
+
     def record_llm_call(
         self,
         workflow_name: str,
@@ -132,31 +132,35 @@ class LLMMetricsCollector:
             model=model,
             token_type="input",
         ).inc(input_tokens)
-        
+
         llm_tokens_total.labels(
             workflow_name=workflow_name,
             step_name=step_name,
             model=model,
             token_type="output",
         ).inc(output_tokens)
-        
+
         # Token histograms
-        llm_tokens_per_call.labels(model=model, token_type="input").observe(input_tokens)
-        llm_tokens_per_call.labels(model=model, token_type="output").observe(output_tokens)
-        
+        llm_tokens_per_call.labels(model=model, token_type="input").observe(
+            input_tokens
+        )
+        llm_tokens_per_call.labels(model=model, token_type="output").observe(
+            output_tokens
+        )
+
         # Cost
         llm_cost_dollars_total.labels(
             workflow_name=workflow_name,
             model=model,
             provider=provider,
         ).inc(cost_dollars)
-        
+
         # Performance
         llm_call_duration_milliseconds.labels(
             model=model,
             provider=provider,
         ).observe(duration_ms)
-        
+
         # Call count
         llm_calls_total.labels(
             workflow_name=workflow_name,
@@ -164,7 +168,7 @@ class LLMMetricsCollector:
             model=model,
             status=status,
         ).inc()
-    
+
     def record_budget_exceeded(
         self,
         workflow_name: str,
@@ -175,7 +179,7 @@ class LLMMetricsCollector:
             workflow_name=workflow_name,
             budget_type=budget_type,
         ).inc()
-    
+
     def update_workflow_totals(
         self,
         workflow_id: str,
@@ -188,12 +192,12 @@ class LLMMetricsCollector:
             workflow_id=workflow_id,
             workflow_name=workflow_name,
         ).set(total_tokens)
-        
+
         llm_workflow_cost_dollars.labels(
             workflow_id=workflow_id,
             workflow_name=workflow_name,
         ).set(total_cost)
-    
+
     def update_budget_utilization(
         self,
         workflow_id: str,

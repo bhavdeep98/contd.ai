@@ -20,6 +20,7 @@ router = APIRouter(prefix="/v1/webhooks", tags=["webhooks"])
 def get_db():
     """Get database connection. Override this in your application."""
     from contd.persistence.adapters.factory import create_adapter
+
     return create_adapter()
 
 

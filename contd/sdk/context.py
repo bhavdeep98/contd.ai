@@ -362,7 +362,7 @@ class ExecutionContext:
                 checksum="",  # Will be recomputed
                 org_id=self._state.org_id,
             )
-            
+
             # Recompute checksum for the new state
             new_checksum = compute_checksum(new_state)
             self._state = WorkflowState(
@@ -510,10 +510,7 @@ class ExecutionContext:
         Called by the @step decorator after step completion.
         Returns the digest if distillation occurred, None otherwise.
         """
-        should_run = (
-            self._distill_requested
-            or self.ledger.should_distill()
-        )
+        should_run = self._distill_requested or self.ledger.should_distill()
 
         if not should_run:
             return None
@@ -530,7 +527,9 @@ class ExecutionContext:
             return None
 
         # Call developer's distill function
-        previous = self.ledger.latest_digest.payload if self.ledger.latest_digest else None
+        previous = (
+            self.ledger.latest_digest.payload if self.ledger.latest_digest else None
+        )
         raw_chunks = list(self.ledger.raw_buffer)
         raw_byte_count = self.ledger.raw_buffer_bytes
 
@@ -617,7 +616,7 @@ class ExecutionContext:
             checksum="",  # Will be recomputed
             org_id=self._state.org_id,
         )
-        
+
         # Recompute checksum for the new state
         new_checksum = compute_checksum(new_state)
         self._state = WorkflowState(

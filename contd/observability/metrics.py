@@ -190,7 +190,9 @@ journal_size_bytes = Gauge(
     "contd_journal_size_bytes", "Journal size per workflow type", ["workflow_name"]
 )
 
-snapshot_count = Gauge("contd_snapshot_count", "Number of snapshots per workflow type", ["workflow_name"])
+snapshot_count = Gauge(
+    "contd_snapshot_count", "Number of snapshots per workflow type", ["workflow_name"]
+)
 
 # Resource usage
 process_memory_bytes = Gauge(
@@ -358,10 +360,11 @@ class MetricsCollector:
         if workflow_id:
             # Log the workflow_id for debugging but don't use it as a label
             import logging
-            logging.getLogger(__name__).error(f"Data corruption detected in workflow {workflow_id}")
-            state_corruption_detected_total.labels(
-                detection_point="checksum"
-            ).inc()
+
+            logging.getLogger(__name__).error(
+                f"Data corruption detected in workflow {workflow_id}"
+            )
+            state_corruption_detected_total.labels(detection_point="checksum").inc()
 
     def record_critical_error(self, component: str, error_type: str):
         """Record critical error"""
