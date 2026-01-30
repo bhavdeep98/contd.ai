@@ -17,7 +17,7 @@ from ..models.events import (
 from ..models.serialization import apply_delta, serialize
 from ..persistence.journal import EventJournal
 from ..persistence.snapshots import SnapshotStore
-from ..context.ledger import ReasoningLedger, ContextEntry, ContextDigest
+from ..context.ledger import ReasoningLedger, ContextDigest
 
 logger = logging.getLogger(__name__)
 

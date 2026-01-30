@@ -12,7 +12,7 @@ Key differences from regular steps:
 - LLM-specific metrics
 """
 
-from typing import TypeVar, Callable, Optional, Dict, Any
+from typing import Callable, Optional, Dict, Any
 from dataclasses import dataclass, field
 from functools import wraps
 from datetime import timedelta

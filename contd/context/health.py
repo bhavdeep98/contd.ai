@@ -7,7 +7,7 @@ No LLM calls. No embeddings. Just statistics the engine already has.
 """
 
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List
 import logging
 
 from .ledger import StepSignal
