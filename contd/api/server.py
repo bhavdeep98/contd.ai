@@ -1,10 +1,13 @@
 from fastapi import FastAPI
 from fastapi.openapi.utils import get_openapi
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from concurrent import futures
 import grpc
 import uvicorn
 import logging
 import os
+from pathlib import Path
 
 from contd.api.routes import router as workflow_router
 from contd.api.proto import workflow_pb2_grpc
@@ -14,6 +17,7 @@ from contd.observability.health import router as health_router
 from contd.observability import setup_observability, teardown_observability
 from contd.api.rate_limit import RateLimitMiddleware, RateLimitConfig
 from contd.api.webhook_routes import router as webhook_router
+from contd.api.ledger_routes import router as ledger_router
 
 # Setup structured JSON logging if enabled
 if os.getenv("CONTD_JSON_LOGGING", "false").lower() == "true":
@@ -98,6 +102,21 @@ app.add_middleware(RateLimitMiddleware, config=rate_limit_config, redis_url=redi
 app.include_router(workflow_router)
 app.include_router(webhook_router)
 app.include_router(health_router)
+app.include_router(ledger_router)
+
+# Serve static files for ledger viewer
+static_dir = Path(__file__).parent / "static"
+if static_dir.exists():
+    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+
+@app.get("/ledger-viewer", include_in_schema=False)
+async def ledger_viewer():
+    """Serve the ledger visualization UI."""
+    html_path = static_dir / "ledger_viewer.html"
+    if html_path.exists():
+        return FileResponse(html_path)
+    return {"error": "Ledger viewer not found"}
 
 # gRPC Server
 grpc_server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
