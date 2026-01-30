@@ -14,18 +14,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GitHub Actions CI/CD workflows
 - Performance benchmarking suite
 - TypeScript, Go, and Java SDKs
-- Comprehensive workflow examples (12 examples)
+- Comprehensive workflow examples (13 examples)
 - Rate limiting and webhook support
 - Health checks and structured logging
 - SQLite and Redis storage adapters
 - CLI tool for workflow management
+- Context preservation module for AI agent reasoning continuity
+- LLM-aware step decorator with token tracking and cost management
+- Reasoning ledger for context rot prevention
+- Distillation support for compressing accumulated reasoning
 
 ### Changed
 - Enhanced Python SDK with improved types and decorators
 - Improved tracing with OpenTelemetry integration
+- Metrics labels optimized to prevent Prometheus cardinality explosion
 
 ### Fixed
-- N/A
+- Go SDK: NewExecutionContext nil state initialization bug
+- Python SDK: Engine method signature mismatches (restore, complete_workflow, maybe_snapshot)
+- Python SDK: llm_step double-execution bug causing duplicate API calls
+- Python API: Missing get_db function in webhook_routes
+- Java SDK: Cached step returning null instead of actual result
+- Java SDK: OkHttp response body leaks (now uses try-with-resources)
+- Python: Stale checksums after state mutations (set_variable, update_tags)
+- Go SDK: StartHeartbeat race condition with WaitGroup
+- Go SDK: Jitter calculation that was a no-op (thundering herd not mitigated)
+- TypeScript SDK: Double-increment of step counter breaking event replay
+- TypeScript SDK: Lost 'this' binding in getSavepoints method
+- Rate limiter: Memory leak from unbounded dictionary growth
+
+### Security
+- SQL injection vulnerability in workflow ID handling (journal and postgres adapter)
+- Added regex validation for workflow IDs to prevent injection attacks
 
 ## [1.0.0] - 2026-01-27
 

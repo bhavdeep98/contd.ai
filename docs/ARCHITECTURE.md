@@ -73,17 +73,45 @@ The SDK provides the developer-facing API through decorators:
   - Starts background heartbeat for lease renewal
   - Handles state restoration on resume
   - Emits observability metrics
+  - Configures context rot prevention
 
 - **`@step`**: Marks a function as an idempotent step
   - Checks idempotency cache before execution
   - Records intention before execution (write-ahead)
   - Computes state delta on completion
   - Supports retry policies and timeouts
+  - Triggers distillation when configured
+
+- **`@llm_step`**: LLM-aware step decorator
+  - Extracts token usage from LLM responses
+  - Calculates and tracks costs per model
+  - Enforces token and cost budgets
+  - Emits LLM-specific metrics
 
 - **`ExecutionContext`**: Thread-local context for workflow execution
   - Manages state and step counters
   - Provides savepoint creation
   - Handles heartbeat lifecycle
+  - Integrates reasoning ledger for context preservation
+
+### Context Preservation (`contd/context/`)
+
+Prevents "context rot" in long-running AI agent workflows:
+
+- **`ReasoningLedger`**: Tracks reasoning across steps
+  - Stores annotations (developer breadcrumbs)
+  - Buffers raw reasoning tokens for distillation
+  - Maintains step-level signals (output size, duration, retries)
+
+- **`ContextHealth`**: Observable health signals
+  - Detects drift (increasing retries, growing outputs)
+  - Recommends distillation or savepoints
+  - Warns when context budget exceeded
+
+- **Distillation**: Compresses accumulated reasoning
+  - Developer-provided distill function
+  - Triggered by step count or buffer size
+  - Produces structured digests for recovery
 
 ### Core Engine (`contd/core/`)
 

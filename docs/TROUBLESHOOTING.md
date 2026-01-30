@@ -311,3 +311,104 @@ print(f"Leases: {status['leases']}")
 1. Check [GitHub Issues](https://github.com/bhavdeep98/contd.ai/issues)
 2. Search [Discussions](https://github.com/bhavdeep98/contd.ai/discussions)
 3. Join [Discord](https://discord.gg/contd)
+
+---
+
+## LLM Step Issues
+
+### TokenBudgetExceeded Error
+
+**Symptom:**
+```python
+contd.sdk.errors.TokenBudgetExceeded: Token budget exceeded: 10000 tokens used, limit 5000
+```
+
+**Causes:**
+1. LLM response larger than expected
+2. Budget set too low for the task
+3. Accumulated tokens across multiple steps
+
+**Solutions:**
+```python
+# Increase step-level budget
+@llm_step(LLMStepConfig(
+    model="gpt-4o",
+    token_budget=20000,  # Increase limit
+    cost_budget=1.00     # Or set cost limit
+))
+def analyze_document(doc: str):
+    ...
+
+# Check workflow-level token usage
+from contd.sdk.llm import get_token_tracker
+ctx = ExecutionContext.current()
+tracker = get_token_tracker(ctx)
+print(f"Total tokens: {tracker.total_tokens}")
+print(f"Total cost: ${tracker.total_cost_dollars:.4f}")
+
+# Set workflow-level budget
+tracker.workflow_token_budget = 100000
+tracker.workflow_cost_budget = 5.00
+```
+
+---
+
+### Context Rot / Degraded Agent Performance
+
+**Symptom:** Agent makes increasingly poor decisions over long workflows
+
+**Causes:**
+1. Accumulated context exceeds model's effective window
+2. Important reasoning lost in noise
+3. No distillation configured
+
+**Solutions:**
+```python
+# Configure context preservation
+@workflow(WorkflowConfig(
+    distill=my_distill_function,
+    distill_every=10,           # Distill every 10 steps
+    distill_threshold=50000,    # Or when buffer exceeds 50KB
+    context_budget=100000,      # Warn at 100KB
+    on_health_warning=handle_health_warning
+))
+def long_running_agent():
+    ...
+
+# Add reasoning breadcrumbs
+ctx = ExecutionContext.current()
+ctx.annotate("Chose approach X because Y")
+
+# Check context health
+health = ctx.context_health()
+print(f"Drift score: {health.drift_score}")
+print(f"Recommendation: {health.recommendation}")
+
+# Request manual distillation
+ctx.request_distill()
+```
+
+---
+
+### Invalid Workflow ID Error
+
+**Symptom:**
+```python
+ValueError: Invalid workflow_id format: wf-123'; DROP TABLE events;--
+```
+
+**Cause:** Workflow ID contains invalid characters (security validation)
+
+**Solution:**
+```python
+# Workflow IDs must match: ^[a-zA-Z0-9_-]+$
+# Valid examples:
+workflow_id = "wf-abc123"
+workflow_id = "order_processing_001"
+workflow_id = "user-task-2024"
+
+# Invalid examples (will be rejected):
+workflow_id = "wf-123; DROP TABLE"  # SQL injection attempt
+workflow_id = "wf/123"              # Contains /
+workflow_id = "wf 123"              # Contains space
+```

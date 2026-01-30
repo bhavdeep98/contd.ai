@@ -13,9 +13,11 @@ Contd.ai is a lightweight, multi-tenant framework designed to build, run, and re
 
 *   **Durable Execution**: Workflows are resumable by default. State is persisted after every step.
 *   **Multi-Tenancy**: Built-in organization isolation. Data and execution contexts are strictly scoped to organizations.
-*   **Epistemic Savepoints**: specialized markers for AI agents to save their logic state (hypotheses, goals, decisions) alongside execution state.
+*   **Epistemic Savepoints**: Specialized markers for AI agents to save their logic state (hypotheses, goals, decisions) alongside execution state.
 *   **Hybrid Recovery**: Fast restoration using snapshots + event replay.
 *   **Idempotency**: Automatic retries and de-duplication of steps.
+*   **Context Preservation**: Prevents "context rot" in long-running agents with reasoning ledgers and distillation.
+*   **LLM Cost Tracking**: Built-in token counting and cost management for LLM-powered workflows.
 
 ## Architecture
 
@@ -102,6 +104,7 @@ The server listens on:
 
 ```python
 from contd.sdk.decorators import workflow, step
+from contd.sdk.llm import llm_step, LLMStepConfig
 from contd.sdk.context import ExecutionContext
 
 @step
@@ -109,15 +112,23 @@ def research_topic(topic: str):
     # Simulate work
     return {"summary": f"Research on {topic} complete."}
 
-@step
-def draft_content(context: dict):
-    # Uses previous step output
-    return {"draft": f"Draft based on {context['summary']}"}
+@llm_step(LLMStepConfig(model="gpt-4o", cost_budget=0.50))
+def generate_content(context: dict):
+    # LLM call with automatic token tracking
+    response = openai.chat.completions.create(
+        model="gpt-4o",
+        messages=[{"role": "user", "content": f"Write about: {context['summary']}"}]
+    )
+    return {"response": response, "content": response.choices[0].message.content}
 
 @workflow
 def blog_agent(topic: str):
+    # Add reasoning breadcrumb
+    ctx = ExecutionContext.current()
+    ctx.annotate(f"Starting research on topic: {topic}")
+    
     data = research_topic(topic)
-    final = draft_content(data)
+    final = generate_content(data)
     return final
 ```
 
