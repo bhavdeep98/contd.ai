@@ -90,9 +90,9 @@ def search_documentation(topics: List[str]) -> dict:
                 "sections": ["Getting Started", "Architecture", "API Reference"]
             },
             {
-                "title": "Temporal.io Concepts",
-                "url": "https://docs.temporal.io",
-                "sections": ["Workflows", "Activities", "Workers"]
+                "title": "Durable Execution Patterns",
+                "url": "https://docs.contd.ai/patterns",
+                "sections": ["Workflows", "Steps", "Recovery"]
             }
         ]
     }

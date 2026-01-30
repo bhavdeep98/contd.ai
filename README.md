@@ -234,13 +234,6 @@ See the [examples/](examples/) directory for 12+ real-world workflow examples:
 - Research and code review agents
 - Customer support automation
 
-## Migration Guides
-
-| From | Guide |
-|------|-------|
-| LangChain | [LangChain Migration Guide](docs/MIGRATION_LANGCHAIN.md) |
-| Temporal | [Temporal Migration Guide](docs/MIGRATION_TEMPORAL.md) |
-
 ## License
 
 Business Source License 1.1 - see [LICENSE](LICENSE) for details.
