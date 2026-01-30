@@ -1,102 +1,40 @@
-from fastapi import Request, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer, APIKeyHeader
-import hashlib
+from fastapi import Request, HTTPException
+from fastapi.security import APIKeyHeader
 from typing import Optional
 
-from contd.core.auth import decode_access_token
-from contd.persistence.auth_store import AuthStore
-from contd.core.engine import ExecutionEngine
-from contd.models.auth import UserInDB, ApiKey
-
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="v1/auth/token", auto_error=False)
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
-async def get_db():
-    engine = ExecutionEngine.get_instance()
-    return engine.db
-
-
-async def get_auth_store(db=Depends(get_db)):
-    return AuthStore(db)
-
-
-async def get_current_user(
-    token: str = Depends(oauth2_scheme), store: AuthStore = Depends(get_auth_store)
-) -> Optional[UserInDB]:
-    if not token:
-        return None
-    payload = decode_access_token(token)
-    if payload is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate credentials",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    user_id = payload.get("sub")
-    if user_id is None:
-        raise HTTPException(status_code=401, detail="Invalid token")
-
-    user = store.get_user_by_id(user_id)
-    if user is None:
-        raise HTTPException(status_code=401, detail="User not found")
-    return user
-
-
-async def get_api_key(
-    key: str = Depends(api_key_header), store: AuthStore = Depends(get_auth_store)
-) -> Optional[ApiKey]:
-    if not key:
-        return None
-    key_hash = hashlib.sha256(key.encode()).hexdigest()
-    return store.get_api_key_by_hash(key_hash)
-
-
 class AuthContext:
-    def __init__(
-        self, org_id: str, user_id: Optional[str] = None, is_service: bool = False
-    ):
+    """Simple auth context for API key authentication."""
+
+    def __init__(self, org_id: str, api_key: Optional[str] = None):
         self.org_id = org_id
-        self.user_id = user_id
-        self.is_service = is_service
+        self.api_key = api_key
 
 
 async def get_auth_context(
     request: Request,
-    user: Optional[UserInDB] = Depends(get_current_user),
-    api_key: Optional[ApiKey] = Depends(get_api_key),
-    store: AuthStore = Depends(get_auth_store),
+    api_key: Optional[str] = None,
 ) -> AuthContext:
-    # Priority 1: API Key
-    if api_key:
-        return AuthContext(
-            str(api_key.org_id),
-            str(api_key.user_id) if api_key.user_id else None,
-            is_service=True,
-        )
+    """
+    Extract auth context from request.
+    
+    For SDK usage, expects:
+    - X-API-Key header (validated by hosted platform)
+    - X-Organization-Id header
+    """
+    # Get API key from header if not provided
+    if api_key is None:
+        api_key = request.headers.get("X-API-Key")
 
-    # Priority 2: User Session
-    if user:
-        org_id = request.headers.get("X-Organization-Id")
-        if not org_id:
-            # Infer org
-            orgs = store.get_user_organizations(user.user_id)
-            if len(orgs) == 1:
-                return AuthContext(str(orgs[0][0].org_id), str(user.user_id))
-            elif len(orgs) == 0:
-                raise HTTPException(status_code=403, detail="User has no organization")
-            else:
-                raise HTTPException(
-                    status_code=400, detail="X-Organization-Id header required"
-                )
+    # Get org ID from header
+    org_id = request.headers.get("X-Organization-Id")
 
-        # Verify
-        orgs = store.get_user_organizations(user.user_id)
-        if not any(str(o[0].org_id) == org_id for o in orgs):
-            raise HTTPException(
-                status_code=403, detail="Not a member of this organization"
-            )
+    if not api_key:
+        raise HTTPException(status_code=401, detail="API key required")
 
-        return AuthContext(org_id, str(user.user_id))
+    if not org_id:
+        raise HTTPException(status_code=400, detail="X-Organization-Id header required")
 
-    raise HTTPException(status_code=401, detail="Not authenticated")
+    return AuthContext(org_id=org_id, api_key=api_key)

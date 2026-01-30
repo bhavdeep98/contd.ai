@@ -347,6 +347,45 @@ class InvalidRetryPolicy(ConfigurationError):
 
 
 # ============================================================================
+# LLM Errors
+# ============================================================================
+
+
+class TokenBudgetExceeded(ContdError):
+    """
+    Token or cost budget exceeded for LLM operations.
+    
+    Raised when an LLM step or workflow exceeds configured limits.
+    """
+    
+    def __init__(
+        self,
+        workflow_id: str,
+        budget_type: str,  # "tokens", "cost", "step_tokens", "step_cost"
+        budget_limit: float,
+        current_usage: float,
+    ):
+        if "cost" in budget_type:
+            message = f"LLM {budget_type} budget exceeded: ${current_usage:.4f} > ${budget_limit:.4f}"
+        else:
+            message = f"LLM {budget_type} budget exceeded: {int(current_usage)} > {int(budget_limit)}"
+        
+        super().__init__(
+            message,
+            workflow_id=workflow_id,
+            details={
+                "budget_type": budget_type,
+                "budget_limit": budget_limit,
+                "current_usage": current_usage,
+                "overage": current_usage - budget_limit,
+            },
+        )
+        self.budget_type = budget_type
+        self.budget_limit = budget_limit
+        self.current_usage = current_usage
+
+
+# ============================================================================
 # Testing Errors
 # ============================================================================
 

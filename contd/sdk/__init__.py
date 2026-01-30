@@ -8,6 +8,16 @@ resumable workflows with exactly-once execution semantics.
 from .decorators import workflow, step, WorkflowConfig, StepConfig
 from .context import ExecutionContext
 from .client import ContdClient
+from .llm import (
+    llm_step,
+    LLMStepConfig,
+    LLMProvider,
+    TokenUsage,
+    TokenTracker,
+    get_token_tracker,
+    calculate_cost,
+    MODEL_PRICING,
+)
 from .types import (
     # Enums
     WorkflowStatus,
@@ -57,6 +67,8 @@ from .errors import (
     # Configuration
     ConfigurationError,
     InvalidRetryPolicy,
+    # LLM
+    TokenBudgetExceeded,
     # Testing
     WorkflowInterrupted,
 )
@@ -76,6 +88,15 @@ __all__ = [
     "step",
     "WorkflowConfig",
     "StepConfig",
+    # LLM Support
+    "llm_step",
+    "LLMStepConfig",
+    "LLMProvider",
+    "TokenUsage",
+    "TokenTracker",
+    "get_token_tracker",
+    "calculate_cost",
+    "MODEL_PRICING",
     # Context
     "ExecutionContext",
     # Client
@@ -126,6 +147,8 @@ __all__ = [
     # Errors - Config
     "ConfigurationError",
     "InvalidRetryPolicy",
+    # Errors - LLM
+    "TokenBudgetExceeded",
     # Errors - Testing
     "WorkflowInterrupted",
     # Testing utilities

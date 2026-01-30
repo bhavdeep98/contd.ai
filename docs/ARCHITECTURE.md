@@ -30,8 +30,7 @@ Contd.ai is a durable execution engine designed for long-running AI agent workfl
 ├─────────────────────────────┬───────────────────────────────────┤
 │      FastAPI (REST)         │           gRPC                    │
 │   /v1/workflows             │      WorkflowService              │
-│   /v1/auth                  │      StreamingUpdates             │
-│   /v1/webhooks              │                                   │
+│   /v1/webhooks              │      StreamingUpdates             │
 └──────────────┬──────────────┴───────────────┬───────────────────┘
                │                              │
                └──────────────┬───────────────┘
@@ -49,10 +48,10 @@ Contd.ai is a durable execution engine designed for long-running AI agent workfl
                             ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                    Persistence Layer                             │
-├─────────────┬─────────────┬─────────────┬───────────────────────┤
-│   Journal   │  Snapshots  │   Leases    │     Auth Store        │
-│  (Events)   │  (State)    │  (Locks)    │   (Users/Keys)        │
-└──────┬──────┴──────┬──────┴──────┬──────┴──────────┬────────────┘
+├─────────────┬─────────────┬─────────────────────────────────────┤
+│   Journal   │  Snapshots  │   Leases                            │
+│  (Events)   │  (State)    │  (Locks)                            │
+└──────┬──────┴──────┬──────┴──────┬──────────────────────────────┘
        │             │             │                 │
        ▼             ▼             ▼                 ▼
 ┌─────────────────────────────────────────────────────────────────┐
@@ -188,7 +187,7 @@ REST and gRPC interfaces:
 Organization isolation is enforced at multiple levels:
 
 1. **API Layer**: `X-Organization-Id` header required
-2. **Auth Context**: Validated against JWT/API key
+2. **Auth Context**: Validated via API key
 3. **Persistence**: `org_id` column in all tables
 4. **Queries**: Always filtered by org_id
 
@@ -210,7 +209,7 @@ Built-in metrics and tracing:
 
 ## Security Model
 
-- **Authentication**: JWT tokens for users, API keys for services
+- **Authentication**: API keys for service integrations (managed via hosted platform)
 - **Authorization**: Scoped permissions (workflow:read, workflow:write)
 - **Encryption**: TLS in transit, optional at-rest encryption
 - **Audit**: All operations logged with actor context

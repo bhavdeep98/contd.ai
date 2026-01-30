@@ -1,6 +1,6 @@
 # Contd.ai Examples
 
-Real-world workflow examples demonstrating Contd.ai capabilities.
+Real-world AI agent workflow examples demonstrating Contd.ai capabilities.
 
 ## Quick Start
 
@@ -10,22 +10,15 @@ pip install -e ..
 pip install requests openai
 
 # Run any example
-python 01_basic_pipeline.py
+python 03_ai_agent.py
 ```
 
 ## Examples
 
 | # | Example | Description |
 |---|---------|-------------|
-| 01 | [Basic Pipeline](01_basic_pipeline.py) | Simple data processing workflow |
-| 02 | [Retry & Timeout](02_retry_timeout.py) | Error handling patterns |
 | 03 | [AI Agent](03_ai_agent.py) | LLM-powered agent with tools |
 | 04 | [RAG Pipeline](04_rag_pipeline.py) | Retrieval-augmented generation |
-| 05 | [Order Processing](05_order_processing.py) | E-commerce saga pattern |
-| 06 | [Data ETL](06_data_etl.py) | Extract-Transform-Load pipeline |
-| 07 | [Multi-Step Approval](07_approval_workflow.py) | Human-in-the-loop workflow |
-| 08 | [Batch Processing](08_batch_processing.py) | Process large datasets |
-| 09 | [Webhook Integration](09_webhook_integration.py) | External service callbacks |
 | 10 | [Research Agent](10_research_agent.py) | Multi-source research with savepoints |
 | 11 | [Code Review Agent](11_code_review_agent.py) | Automated PR review |
 | 12 | [Customer Support](12_customer_support.py) | Support ticket automation |
@@ -39,7 +32,7 @@ python 01_basic_pipeline.py
 contd init
 
 # Run example
-python 01_basic_pipeline.py
+python 03_ai_agent.py
 ```
 
 ### Server Mode (PostgreSQL)
@@ -51,29 +44,22 @@ python -m contd.api.server
 
 # In another terminal
 export CONTD_API_KEY=sk_live_...
-python 01_basic_pipeline.py --server
+python 03_ai_agent.py --server
 ```
 
-## Example Categories
+## Example Descriptions
 
-### Basic Patterns
-- `01_basic_pipeline.py` - Sequential steps
-- `02_retry_timeout.py` - Error handling
+### AI Agent (03)
+Tool-using LLM agent with durable execution. Demonstrates how agents can use external tools while maintaining state across failures.
 
-### AI/ML Workflows
-- `03_ai_agent.py` - Tool-using agent
-- `04_rag_pipeline.py` - RAG with vector DB
-- `10_research_agent.py` - Multi-source research
-- `11_code_review_agent.py` - Code analysis
+### RAG Pipeline (04)
+Retrieval-augmented generation workflow. Shows document retrieval, embedding, and LLM response generation with checkpointing.
 
-### Business Workflows
-- `05_order_processing.py` - E-commerce
-- `07_approval_workflow.py` - Human approval
-- `12_customer_support.py` - Ticket handling
+### Research Agent (10)
+Multi-source research agent with epistemic savepoints. Demonstrates saving agent reasoning state (hypotheses, goals, decisions) alongside execution state.
 
-### Data Processing
-- `06_data_etl.py` - ETL pipeline
-- `08_batch_processing.py` - Large datasets
+### Code Review Agent (11)
+Automated code review using LLM analysis. Reviews pull requests, identifies issues, and suggests improvements.
 
-### Integration
-- `09_webhook_integration.py` - External callbacks
+### Customer Support (12)
+Support ticket automation with LLM-powered responses. Handles ticket classification, response generation, and escalation.

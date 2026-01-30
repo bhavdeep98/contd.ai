@@ -13,7 +13,6 @@ from contd.core.engine import ExecutionEngine
 from contd.observability.health import router as health_router
 from contd.observability import setup_observability, teardown_observability
 from contd.api.rate_limit import RateLimitMiddleware, RateLimitConfig
-from contd.api.auth_routes import router as auth_router
 from contd.api.webhook_routes import router as webhook_router
 
 # Setup structured JSON logging if enabled
@@ -51,8 +50,8 @@ Durable workflow execution engine with time-travel debugging capabilities.
 
 ### Authentication
 All API endpoints require authentication via:
-- **Bearer Token**: JWT token from `/v1/auth/token`
 - **API Key**: Pass in `X-API-Key` header
+- **Organization ID**: Pass in `X-Organization-Id` header
 
 ### Rate Limiting
 API requests are rate limited per API key or IP address:
@@ -64,12 +63,11 @@ API requests are rate limited per API key or IP address:
 
     # Add security schemes
     openapi_schema["components"]["securitySchemes"] = {
-        "bearerAuth": {"type": "http", "scheme": "bearer", "bearerFormat": "JWT"},
         "apiKeyAuth": {"type": "apiKey", "in": "header", "name": "X-API-Key"},
     }
 
     # Apply security globally
-    openapi_schema["security"] = [{"bearerAuth": []}, {"apiKeyAuth": []}]
+    openapi_schema["security"] = [{"apiKeyAuth": []}]
 
     app.openapi_schema = openapi_schema
     return app.openapi_schema
@@ -98,7 +96,6 @@ app.add_middleware(RateLimitMiddleware, config=rate_limit_config, redis_url=redi
 
 # Include routes
 app.include_router(workflow_router)
-app.include_router(auth_router)
 app.include_router(webhook_router)
 app.include_router(health_router)
 

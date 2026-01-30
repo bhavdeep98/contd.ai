@@ -2,23 +2,52 @@
 Example 03: AI Agent with Tools
 
 A durable AI agent that uses tools to accomplish tasks.
-Demonstrates epistemic savepoints for AI reasoning state.
+Demonstrates:
+- @llm_step for LLM calls with token tracking
+- Epistemic savepoints for AI reasoning state
+- Token budget enforcement
 """
 
-from contd.sdk import workflow, step, StepConfig, ExecutionContext
+from contd.sdk import (
+    workflow,
+    step,
+    llm_step,
+    LLMStepConfig,
+    LLMProvider,
+    StepConfig,
+    ExecutionContext,
+    get_token_tracker,
+    TokenBudgetExceeded,
+)
 
 
-# Simulated LLM (replace with real OpenAI/Anthropic client)
-def call_llm(prompt: str) -> str:
-    """Simulate LLM response."""
+# Simulated LLM response with token usage
+# In production, use real OpenAI/Anthropic client
+def call_llm_api(prompt: str, model: str = "gpt-4o") -> dict:
+    """
+    Simulate LLM API response with token usage.
+    
+    Real implementation would use:
+        response = openai.chat.completions.create(...)
+        return response  # Has .usage attribute
+    """
     if "weather" in prompt.lower():
-        return "TOOL: get_weather(location='San Francisco')"
+        content = "TOOL: get_weather(location='San Francisco')"
     elif "calculate" in prompt.lower():
-        return "TOOL: calculator(expression='25 * 4')"
+        content = "TOOL: calculator(expression='25 * 4')"
     elif "search" in prompt.lower():
-        return "TOOL: web_search(query='latest AI news')"
+        content = "TOOL: web_search(query='latest AI news')"
     else:
-        return "ANSWER: Based on my analysis, the answer is 42."
+        content = "ANSWER: Based on my analysis, the answer is 42."
+    
+    # Simulate token usage (real API returns this)
+    return {
+        "content": content,
+        "usage": {
+            "prompt_tokens": len(prompt.split()) * 2,  # Rough estimate
+            "completion_tokens": len(content.split()) * 2,
+        }
+    }
 
 
 @step()
@@ -54,13 +83,21 @@ def web_search(query: str) -> dict:
     }
 
 
-@step(StepConfig(savepoint=True))
+@llm_step(LLMStepConfig(
+    model="gpt-4o",
+    provider=LLMProvider.OPENAI,
+    track_tokens=True,
+    token_budget=5000,  # Max 5k tokens per think step
+    savepoint=True,
+))
 def agent_think(question: str, context: dict, iteration: int) -> dict:
     """
-    Agent reasoning step with epistemic savepoint.
+    Agent reasoning step with LLM call.
     
-    Saves the agent's reasoning state so it can be
-    inspected or resumed with full context.
+    Uses @llm_step to:
+    - Track token usage automatically
+    - Enforce per-step token budget
+    - Create epistemic savepoint
     """
     ctx = ExecutionContext.current()
     
@@ -73,12 +110,13 @@ def agent_think(question: str, context: dict, iteration: int) -> dict:
     What should I do next? Use a tool or provide an answer.
     """
     
-    # Call LLM
-    response = call_llm(prompt)
+    # Call LLM (returns response with usage info)
+    response = call_llm_api(prompt)
     
     # Parse response
-    if response.startswith("TOOL:"):
-        tool_call = response[5:].strip()
+    content = response["content"]
+    if content.startswith("TOOL:"):
+        tool_call = content[5:].strip()
         action = "use_tool"
     else:
         tool_call = None
@@ -95,11 +133,13 @@ def agent_think(question: str, context: dict, iteration: int) -> dict:
         "next_step": tool_call if tool_call else "provide_answer"
     })
     
+    # Return response with usage for token tracking
     return {
         "action": action,
         "tool_call": tool_call,
-        "response": response,
-        "iteration": iteration
+        "response": content,
+        "iteration": iteration,
+        "usage": response["usage"],  # @llm_step extracts this
     }
 
 
@@ -126,43 +166,82 @@ def execute_tool(tool_call: str, context: dict) -> dict:
 @workflow()
 def ai_agent(question: str, max_iterations: int = 5) -> dict:
     """
-    Durable AI agent workflow.
+    Durable AI agent workflow with token tracking.
     
     The agent:
-    1. Thinks about the question
+    1. Thinks about the question (LLM call with token tracking)
     2. Decides to use a tool or answer
     3. Executes tools as needed
     4. Provides final answer
     
-    Each step is checkpointed. If the agent crashes,
-    it resumes with full reasoning context via savepoints.
+    Features:
+    - Each LLM call tracks tokens and cost
+    - Per-step and workflow-level budget enforcement
+    - Epistemic savepoints capture reasoning state
+    - Full recovery on crash/restart
     """
+    ctx = ExecutionContext.current()
     context = {"question": question}
     
-    for i in range(max_iterations):
-        # Agent thinks
-        thought = agent_think(question, context, i)
-        
-        if thought["action"] == "answer":
-            # Agent has an answer
-            return {
-                "question": question,
-                "answer": thought["response"],
-                "iterations": i + 1,
-                "context": context
-            }
-        
-        # Execute tool
-        context = execute_tool(thought["tool_call"], context)
+    # Set workflow-level token budget (optional)
+    tracker = get_token_tracker(ctx)
+    tracker.workflow_token_budget = 50000  # 50k tokens max for entire workflow
+    tracker.workflow_cost_budget = 1.00    # $1 max cost
     
-    return {
-        "question": question,
-        "answer": "Could not determine answer within iteration limit",
-        "iterations": max_iterations,
-        "context": context
-    }
+    try:
+        for i in range(max_iterations):
+            # Agent thinks (LLM call with token tracking)
+            thought = agent_think(question, context, i)
+            
+            if thought["action"] == "answer":
+                # Agent has an answer - include token summary
+                return {
+                    "question": question,
+                    "answer": thought["response"],
+                    "iterations": i + 1,
+                    "context": context,
+                    "token_usage": {
+                        "total_tokens": tracker.total_tokens,
+                        "total_cost": f"${tracker.total_cost_dollars:.4f}",
+                        "by_model": {
+                            model: usage.total_tokens 
+                            for model, usage in tracker.tokens_by_model.items()
+                        }
+                    }
+                }
+            
+            # Execute tool
+            context = execute_tool(thought["tool_call"], context)
+        
+        return {
+            "question": question,
+            "answer": "Could not determine answer within iteration limit",
+            "iterations": max_iterations,
+            "context": context,
+            "token_usage": {
+                "total_tokens": tracker.total_tokens,
+                "total_cost": f"${tracker.total_cost_dollars:.4f}",
+            }
+        }
+        
+    except TokenBudgetExceeded as e:
+        # Budget exceeded - return partial result
+        return {
+            "question": question,
+            "answer": f"Budget exceeded: {e.message}",
+            "iterations": i + 1,
+            "context": context,
+            "token_usage": {
+                "total_tokens": tracker.total_tokens,
+                "total_cost": f"${tracker.total_cost_dollars:.4f}",
+                "budget_exceeded": True,
+            }
+        }
 
 
 if __name__ == "__main__":
     result = ai_agent("What's the weather in San Francisco?")
     print(f"\nAgent result: {result}")
+    
+    if "token_usage" in result:
+        print(f"\nToken usage: {result['token_usage']}")

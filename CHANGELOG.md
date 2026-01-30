@@ -39,12 +39,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Python SDK with decorators
 - Prometheus metrics integration
 - OpenTelemetry tracing
-- API key authentication
 
 ### Security
-- API key authentication
-- Rate limiting
-- Input validation
+- API key authentication (via hosted platform)
 
 ---
 

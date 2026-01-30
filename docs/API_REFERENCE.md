@@ -6,12 +6,13 @@ Base URL: `https://api.contd.ai` (or your self-hosted instance)
 
 ### Authentication
 
-All API requests require authentication via one of:
-- `Authorization: Bearer <jwt_token>` - User sessions
+All API requests require an API key:
 - `X-API-Key: <api_key>` - Service integrations
 
 Organization context required for most endpoints:
 - `X-Organization-Id: <org_id>`
+
+API keys are managed through the hosted Contd platform dashboard.
 
 ---
 
@@ -141,110 +142,6 @@ Create a new workflow branched from a savepoint.
   "new_workflow_id": "wf-new-branch-id"
 }
 ```
-
----
-
-## Authentication
-
-### User Signup
-
-```http
-POST /v1/auth/signup
-```
-
-**Request Body:**
-```json
-{
-  "email": "user@example.com",
-  "password": "secure_password",
-  "full_name": "John Doe"
-}
-```
-
-**Response:** `201 Created`
-```json
-{
-  "user_id": "usr-123",
-  "email": "user@example.com"
-}
-```
-
----
-
-### Login (Get Token)
-
-```http
-POST /v1/auth/token
-Content-Type: application/x-www-form-urlencoded
-```
-
-**Request Body:**
-```
-username=user@example.com&password=secure_password
-```
-
-**Response:** `200 OK`
-```json
-{
-  "access_token": "eyJhbGciOiJIUzI1NiIs...",
-  "token_type": "bearer",
-  "expires_in": 3600
-}
-```
-
----
-
-### Create Organization
-
-```http
-POST /v1/auth/organizations
-Authorization: Bearer <token>
-```
-
-**Request Body:**
-```json
-{
-  "name": "My AI Team"
-}
-```
-
-**Response:** `201 Created`
-```json
-{
-  "org_id": "org-456",
-  "name": "My AI Team"
-}
-```
-
----
-
-### Create API Key
-
-```http
-POST /v1/auth/apikeys
-Authorization: Bearer <token>
-X-Organization-Id: <org_id>
-```
-
-**Request Body:**
-```json
-{
-  "name": "Production Agent",
-  "scopes": ["workflow:read", "workflow:write"]
-}
-```
-
-**Response:** `201 Created`
-```json
-{
-  "key_id": "key-789",
-  "api_key": "sk_live_...",
-  "name": "Production Agent",
-  "scopes": ["workflow:read", "workflow:write"]
-}
-```
-
-**Note:** The `api_key` is only shown once. Store it securely.
 
 ---
 
@@ -477,7 +374,6 @@ for update in stub.StreamUpdates(workflow_pb2.StreamRequest(
 |----------|-------|
 | POST /v1/workflows | 100/min |
 | GET /v1/workflows/* | 1000/min |
-| POST /v1/auth/* | 10/min |
 | Webhooks | 1000/min |
 
 Rate limit headers:
