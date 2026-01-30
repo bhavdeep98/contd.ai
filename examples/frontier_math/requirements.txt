@@ -1,0 +1,16 @@
+# FrontierMath Solver Requirements
+
+# Core contd.ai
+contd[all]>=0.1.4
+
+# Environment variables
+python-dotenv>=1.0.0
+
+# Model APIs
+openai>=1.0.0  # For DeepSeek API
+anthropic>=0.18.0  # For Claude Extended Thinking
+requests>=2.31.0  # For Ollama
+
+# Optional: For advanced distillation
+# transformers>=4.30.0
+# torch>=2.0.0
