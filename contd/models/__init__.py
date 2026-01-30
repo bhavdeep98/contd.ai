@@ -12,6 +12,9 @@ from .events import (
     StepCompletedEvent,
     StepFailedEvent,
     SavepointCreatedEvent,
+    AnnotationCreatedEvent,
+    ReasoningIngestedEvent,
+    ContextDigestCreatedEvent,
 )
 from .savepoint import Savepoint
 from .serialization import serialize, deserialize, compute_delta, apply_delta
@@ -27,6 +30,9 @@ __all__ = [
     "StepCompletedEvent",
     "StepFailedEvent",
     "SavepointCreatedEvent",
+    "AnnotationCreatedEvent",
+    "ReasoningIngestedEvent",
+    "ContextDigestCreatedEvent",
     # Savepoint
     "Savepoint",
     # Serialization

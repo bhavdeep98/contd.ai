@@ -22,6 +22,10 @@ class EventType(Enum):
     WORKFLOW_SUSPENDED = "workflow.suspended"
     WORKFLOW_RESTORED = "workflow.restored"
     WORKFLOW_COMPLETED = "workflow.completed"
+    # Context preservation events
+    ANNOTATION_CREATED = "context.annotation"
+    REASONING_INGESTED = "context.reasoning"
+    CONTEXT_DIGEST_CREATED = "context.digest"
 
 
 @dataclass(frozen=True)
@@ -84,3 +88,54 @@ class SavepointCreatedEvent(BaseEvent):
             object.__setattr__(self, "open_questions", [])
         if self.decision_log is None:
             object.__setattr__(self, "decision_log", [])
+
+
+# =============================================================================
+# Context Preservation Events
+# =============================================================================
+
+
+@dataclass(frozen=True)
+class AnnotationCreatedEvent(BaseEvent):
+    """
+    Lightweight reasoning breadcrumb created by developer via ctx.annotate().
+    Step-associated for filtering on restore.
+    """
+    step_number: int = 0
+    step_name: str = ""
+    text: str = ""
+    event_type: Literal[EventType.ANNOTATION_CREATED] = EventType.ANNOTATION_CREATED
+
+
+@dataclass(frozen=True)
+class ReasoningIngestedEvent(BaseEvent):
+    """
+    Raw reasoning tokens ingested via ctx.ingest().
+    Accumulated in buffer until distillation.
+    """
+    step_number: int = 0
+    chunk: str = ""
+    chunk_size: int = 0
+    event_type: Literal[EventType.REASONING_INGESTED] = EventType.REASONING_INGESTED
+
+
+@dataclass(frozen=True)
+class ContextDigestCreatedEvent(BaseEvent):
+    """
+    Distilled context created by developer-provided distill function.
+    Contains compressed reasoning from accumulated chunks.
+    """
+    step_number: int = 0
+    digest: dict = None  # Developer-defined structure
+    chunks_processed: int = 0
+    distill_failed: bool = False
+    error: str = ""
+    # Raw chunks included if distill failed (fallback)
+    raw_chunks: list = None
+    event_type: Literal[EventType.CONTEXT_DIGEST_CREATED] = EventType.CONTEXT_DIGEST_CREATED
+
+    def __post_init__(self):
+        if self.digest is None:
+            object.__setattr__(self, "digest", {})
+        if self.raw_chunks is None:
+            object.__setattr__(self, "raw_chunks", [])
