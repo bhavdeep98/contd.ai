@@ -61,9 +61,11 @@ func (p RetryPolicy) Backoff(attempt int) time.Duration {
 	if delay > p.BackoffMax {
 		delay = p.BackoffMax
 	}
-	// Add jitter
+	// Add jitter: random value in range [delay - jitter/2, delay + jitter/2]
 	jitterRange := delay * p.BackoffJitter
-	delay = delay - jitterRange/2 + jitterRange*0.5 // Simplified jitter
+	// Use time-based seed for randomness (import "math/rand" needed)
+	jitter := (float64(time.Now().UnixNano()%1000) / 1000.0) * jitterRange
+	delay = delay - jitterRange/2 + jitter
 	return time.Duration(delay * float64(time.Second))
 }
 

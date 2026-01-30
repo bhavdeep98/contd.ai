@@ -43,7 +43,7 @@ checksum_validation_failures_total = Counter(
 state_corruption_detected_total = Counter(
     "contd_state_corruption_detected_total",
     "Detected state corruption",
-    ["workflow_id", "detection_point"],
+    ["detection_point"],  # Removed workflow_id to prevent cardinality explosion
 )
 
 # Availability: Workflow success
@@ -103,11 +103,11 @@ steps_executed_total = Counter(
     ["workflow_name", "step_name", "status"],
 )
 
-# Business: Billing metric
+# Business: Billing metric (use plan_type for aggregation, not user_id)
 managed_steps_total = Counter(
     "contd_managed_steps_total",
     "Total managed steps (billing unit)",
-    ["user_id", "workflow_name", "plan_type"],
+    ["workflow_name", "plan_type"],  # Removed user_id to prevent cardinality explosion
 )
 
 # Cost: Savings from resumability
@@ -185,12 +185,12 @@ step_retries_total = Counter(
     ["workflow_name", "step_name", "attempt_number"],
 )
 
-# Storage growth
+# Storage growth (use workflow_name for aggregation, not workflow_id)
 journal_size_bytes = Gauge(
-    "contd_journal_size_bytes", "Journal size per workflow", ["workflow_id"]
+    "contd_journal_size_bytes", "Journal size per workflow type", ["workflow_name"]
 )
 
-snapshot_count = Gauge("contd_snapshot_count", "Number of snapshots", ["workflow_id"])
+snapshot_count = Gauge("contd_snapshot_count", "Number of snapshots per workflow type", ["workflow_name"])
 
 # Resource usage
 process_memory_bytes = Gauge(
@@ -274,10 +274,10 @@ class MetricsCollector:
                 workflow_name=workflow_name, step_name=step_name
             ).inc()
 
-        # Billing metric
-        if user_id and status == "completed":
+        # Billing metric (aggregate by plan_type, not user_id)
+        if status == "completed":
             managed_steps_total.labels(
-                user_id=user_id, workflow_name=workflow_name, plan_type=plan_type
+                workflow_name=workflow_name, plan_type=plan_type
             ).inc()
 
     def record_restore(
@@ -315,7 +315,8 @@ class MetricsCollector:
             workflow_name=workflow_name, storage_type=storage_type
         ).observe(size_bytes)
 
-        snapshot_count.labels(workflow_id=workflow_id).inc()
+        # Use workflow_name instead of workflow_id to prevent cardinality explosion
+        snapshot_count.labels(workflow_name=workflow_name).inc()
 
     def record_journal_append(self, event_type: str, duration_ms: float):
         """Record journal append"""
@@ -355,8 +356,11 @@ class MetricsCollector:
         checksum_validation_failures_total.labels(data_type=data_type).inc()
 
         if workflow_id:
+            # Log the workflow_id for debugging but don't use it as a label
+            import logging
+            logging.getLogger(__name__).error(f"Data corruption detected in workflow {workflow_id}")
             state_corruption_detected_total.labels(
-                workflow_id=workflow_id, detection_point="checksum"
+                detection_point="checksum"
             ).inc()
 
     def record_critical_error(self, component: str, error_type: str):

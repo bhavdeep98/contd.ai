@@ -353,14 +353,26 @@ class ExecutionContext:
             current_tags.update(new_tags)
             current_metadata["tags"] = current_tags
 
-            self._state = WorkflowState(
+            new_state = WorkflowState(
                 workflow_id=self._state.workflow_id,
                 step_number=self._state.step_number,
                 variables=self._state.variables,
                 metadata=current_metadata,
                 version=self._state.version,
-                checksum=self._state.checksum,
+                checksum="",  # Will be recomputed
                 org_id=self._state.org_id,
+            )
+            
+            # Recompute checksum for the new state
+            new_checksum = compute_checksum(new_state)
+            self._state = WorkflowState(
+                workflow_id=new_state.workflow_id,
+                step_number=new_state.step_number,
+                variables=new_state.variables,
+                metadata=new_state.metadata,
+                version=new_state.version,
+                checksum=new_checksum,
+                org_id=new_state.org_id,
             )
 
     # =========================================================================
@@ -596,14 +608,26 @@ class ExecutionContext:
         current_vars = dict(self._state.variables)
         current_vars[key] = value
 
-        self._state = WorkflowState(
+        new_state = WorkflowState(
             workflow_id=self._state.workflow_id,
             step_number=self._state.step_number,
             variables=current_vars,
             metadata=self._state.metadata,
             version=self._state.version,
-            checksum=self._state.checksum,
+            checksum="",  # Will be recomputed
             org_id=self._state.org_id,
+        )
+        
+        # Recompute checksum for the new state
+        new_checksum = compute_checksum(new_state)
+        self._state = WorkflowState(
+            workflow_id=new_state.workflow_id,
+            step_number=new_state.step_number,
+            variables=new_state.variables,
+            metadata=new_state.metadata,
+            version=new_state.version,
+            checksum=new_checksum,
+            org_id=new_state.org_id,
         )
 
     def get_restore_context(self) -> dict:

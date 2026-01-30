@@ -82,6 +82,7 @@ func WithContext(ctx context.Context, ec *ExecutionContext) context.Context {
 
 // NewExecutionContext creates a new execution context
 func NewExecutionContext(workflowID, orgID, workflowName string, tags map[string]string) *ExecutionContext {
+	isNewWorkflow := workflowID == ""
 	if workflowID == "" {
 		workflowID = "wf-" + uuid.New().String()
 	}
@@ -102,7 +103,7 @@ func NewExecutionContext(workflowID, orgID, workflowName string, tags map[string
 	}
 
 	// Initialize state for new workflows
-	if workflowID == "" {
+	if isNewWorkflow {
 		ec.state = &WorkflowState{
 			WorkflowID: ec.WorkflowID,
 			StepNumber: 0,
@@ -231,9 +232,9 @@ func (ec *ExecutionContext) StartHeartbeat(lease *Lease, engine Engine) {
 	ec.lease = lease
 	ec.engine = engine
 	ec.heartbeatStop = make(chan struct{})
+	ec.heartbeatWg.Add(1) // Add before releasing lock to prevent race with StopHeartbeat
 	ec.mu.Unlock()
 
-	ec.heartbeatWg.Add(1)
 	go func() {
 		defer ec.heartbeatWg.Done()
 		ticker := time.NewTicker(engine.LeaseManager().HeartbeatInterval())

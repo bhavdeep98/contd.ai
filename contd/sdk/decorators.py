@@ -17,7 +17,6 @@ from contd.sdk.errors import (
 from contd.models.serialization import compute_delta, serialize
 from contd.models.events import StepIntentionEvent, StepFailedEvent, StepCompletedEvent
 from contd.sdk.registry import WorkflowRegistry
-from typing import Callable as TypingCallable
 
 logger = logging.getLogger(__name__)
 
@@ -67,11 +66,11 @@ class WorkflowConfig:
     tags: Optional[dict[str, str]] = None
     org_id: Optional[str] = None
     # Context rot prevention
-    distill: Optional[TypingCallable] = None
+    distill: Optional[Callable] = None
     distill_every: int = 0
     distill_threshold: int = 0
     context_budget: int = 0
-    on_health_warning: Optional[TypingCallable] = None
+    on_health_warning: Optional[Callable] = None
 
 
 def workflow(config: WorkflowConfig | None = None):
@@ -156,10 +155,11 @@ def workflow(config: WorkflowConfig | None = None):
                 # Check if resuming
                 if ctx.is_resuming():
                     restore_start = time.time()
-                    state = ctx.engine.restore(ctx.workflow_id)
+                    state, last_event_seq = ctx.engine.restore(ctx.workflow_id, ctx.org_id)
                     restore_duration = (time.time() - restore_start) * 1000
 
                     ctx.set_state(state)
+                    ctx._last_event_seq = last_event_seq
                     logger.info(
                         f"Resumed workflow {ctx.workflow_id} from step {state.step_number}"
                     )
@@ -183,7 +183,9 @@ def workflow(config: WorkflowConfig | None = None):
                 result = fn(*args, **kwargs)
 
                 # Mark complete
-                ctx.engine.complete_workflow(ctx.workflow_id)
+                final_state = ctx.get_state()
+                last_seq = getattr(ctx, '_last_event_seq', 0)
+                ctx.engine.complete_workflow(ctx.workflow_id, final_state, last_seq)
 
                 # Emit completion metric
                 if collector:
@@ -490,7 +492,9 @@ def step(config: StepConfig | None = None):
 
             # Checkpoint if configured
             if cfg.checkpoint:
-                ctx.engine.maybe_snapshot(new_state)
+                last_seq = getattr(ctx, '_last_event_seq', 0)
+                ctx.engine.maybe_snapshot(new_state, last_seq)
+                ctx._last_event_seq = last_seq
 
             # Savepoint if configured (rich metadata)
             if cfg.savepoint:

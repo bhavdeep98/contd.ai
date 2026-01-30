@@ -108,7 +108,10 @@ public class WorkflowRunner {
             if (cachedResult != null) {
                 System.out.println("Step " + stepId + " already completed, returning cached result");
                 ctx.setState(cachedResult);
-                return null; // Cached result doesn't have the actual return value
+                // Return the cached result from state variables if available
+                @SuppressWarnings("unchecked")
+                T cachedValue = (T) cachedResult.getVariables().get("_step_result_" + stepId);
+                return cachedValue;
             }
 
             // Allocate attempt
@@ -172,8 +175,9 @@ public class WorkflowRunner {
 
             long durationMs = Duration.between(startTime, Instant.now()).toMillis();
 
-            // Extract new state
+            // Extract new state and store the result for idempotent retrieval
             WorkflowState newState = ctx.extractState(result);
+            newState.getVariables().put("_step_result_" + stepId, result);
             WorkflowState oldState = ctx.getState();
 
             // Compute delta

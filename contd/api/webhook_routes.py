@@ -12,9 +12,15 @@ from contd.api.webhooks import (
     WebhookStore,
     generate_webhook_secret,
 )
-from contd.api.dependencies import get_auth_context, AuthContext, get_db
+from contd.api.dependencies import get_auth_context, AuthContext
 
 router = APIRouter(prefix="/v1/webhooks", tags=["webhooks"])
+
+
+def get_db():
+    """Get database connection. Override this in your application."""
+    from contd.persistence.adapters.factory import create_adapter
+    return create_adapter()
 
 
 async def get_webhook_store(db=Depends(get_db)):

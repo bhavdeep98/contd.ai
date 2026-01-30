@@ -323,6 +323,9 @@ def llm_step(config: Optional[LLMStepConfig] = None):
     )
     
     def decorator(fn: Callable) -> Callable:
+        # First apply the @step decorator to the original function
+        step_wrapped = step(step_cfg)(fn)
+        
         @wraps(fn)
         def wrapper(*args, **kwargs):
             ctx = ExecutionContext.current()
@@ -331,12 +334,12 @@ def llm_step(config: Optional[LLMStepConfig] = None):
             
             start_time = time.monotonic()
             
-            # Execute the actual LLM call
-            result = fn(*args, **kwargs)
+            # Execute via the step-wrapped function (handles idempotency, journaling, etc.)
+            result = step_wrapped(*args, **kwargs)
             
             duration_ms = (time.monotonic() - start_time) * 1000
             
-            # Extract token usage
+            # Extract token usage (post-processing only, no re-execution)
             if cfg.track_tokens:
                 # Try to extract from result
                 usage = None
@@ -405,14 +408,13 @@ def llm_step(config: Optional[LLMStepConfig] = None):
             
             return result
         
-        # Apply the underlying @step decorator
-        wrapped = step(step_cfg)(wrapper)
-        
         # Attach LLM metadata
-        wrapped.__contd_llm_step__ = True
-        wrapped.__contd_llm_config__ = cfg
+        wrapper.__contd_llm_step__ = True
+        wrapper.__contd_llm_config__ = cfg
+        wrapper.__contd_step__ = True
+        wrapper.__contd_config__ = step_cfg
         
-        return wrapped
+        return wrapper
     
     return decorator
 

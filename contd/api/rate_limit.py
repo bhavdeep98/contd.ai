@@ -96,12 +96,19 @@ class SlidingWindowCounter:
 class InMemoryRateLimiter:
     """In-memory rate limiter using sliding window."""
 
+    # Cleanup interval in seconds
+    CLEANUP_INTERVAL = 300  # 5 minutes
+    # Max age for inactive entries in seconds
+    MAX_INACTIVE_AGE = 3600  # 1 hour
+
     def __init__(self, config: RateLimitConfig):
         self.config = config
         self._minute_windows: Dict[str, SlidingWindowCounter] = {}
         self._hour_windows: Dict[str, SlidingWindowCounter] = {}
         self._bursts: Dict[str, TokenBucket] = {}
+        self._last_access: Dict[str, float] = {}  # Track last access time per key
         self._lock = asyncio.Lock()
+        self._last_cleanup = time.monotonic()
 
     def _get_key(self, request: Request) -> str:
         """Extract rate limit key from request."""
@@ -120,9 +127,36 @@ class InMemoryRateLimiter:
 
         return f"ip:{client_ip}"
 
+    async def _cleanup_stale_entries(self):
+        """Remove entries that haven't been accessed recently."""
+        now = time.monotonic()
+        if now - self._last_cleanup < self.CLEANUP_INTERVAL:
+            return
+        
+        async with self._lock:
+            self._last_cleanup = now
+            stale_keys = [
+                key for key, last_access in self._last_access.items()
+                if now - last_access > self.MAX_INACTIVE_AGE
+            ]
+            
+            for key in stale_keys:
+                self._minute_windows.pop(key, None)
+                self._hour_windows.pop(key, None)
+                self._bursts.pop(key, None)
+                self._last_access.pop(key, None)
+            
+            if stale_keys:
+                logger.debug(f"Cleaned up {len(stale_keys)} stale rate limit entries")
+
     async def _get_or_create_windows(self, key: str):
         """Get or create rate limit windows for a key."""
+        # Periodically cleanup stale entries
+        await self._cleanup_stale_entries()
+        
         async with self._lock:
+            self._last_access[key] = time.monotonic()
+            
             if key not in self._minute_windows:
                 self._minute_windows[key] = SlidingWindowCounter(
                     60, self.config.requests_per_minute

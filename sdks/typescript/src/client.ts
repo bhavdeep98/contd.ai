@@ -99,7 +99,9 @@ export class ContdClient {
     const response = await this.client.get(
       `/v1/workflows/${workflowId}/savepoints`
     );
-    return response.data.savepoints.map(this.deserializeSavepoint);
+    return response.data.savepoints.map((sp: Record<string, unknown>) => 
+      this.deserializeSavepoint(sp)
+    );
   }
 
   /**

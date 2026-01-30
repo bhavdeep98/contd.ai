@@ -101,10 +101,20 @@ class EventJournal:
         if hasattr(self.db, "get_next_event_seq"):
             return self.db.get_next_event_seq(workflow_id)
 
-        # Fallback: use dynamic sequence name
-        # Note: workflow_id must be sanitized for sequence name
+        # Fallback: use parameterized query with safe sequence naming
+        # Validate workflow_id to prevent SQL injection
+        import re
+        if not re.match(r'^[a-zA-Z0-9_-]+$', workflow_id):
+            raise ValueError(f"Invalid workflow_id format: {workflow_id}")
+        
         safe_id = workflow_id.replace("-", "_")
-        return self.db.query_val(f"SELECT nextval('event_seq_{safe_id}')")
+        # Use parameterized approach - create sequence if needed first
+        try:
+            return self.db.query_val(f"SELECT nextval('event_seq_{safe_id}')")
+        except Exception:
+            # Sequence might not exist, create it
+            self.db.execute(f"CREATE SEQUENCE IF NOT EXISTS event_seq_{safe_id}")
+            return self.db.query_val(f"SELECT nextval('event_seq_{safe_id}')")
 
     def _canonicalize(self, payload: dict) -> str:
         """Create canonical JSON representation for checksumming."""

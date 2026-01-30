@@ -55,33 +55,42 @@ public class ContdClient {
             body.put("config", config);
         }
 
-        Response response = doRequest("POST", "/v1/workflows", body);
-        Map<String, Object> result = parseResponse(response);
-        return (String) result.get("workflow_id");
+        try (Response response = doRequest("POST", "/v1/workflows", body)) {
+            Map<String, Object> result = parseResponse(response);
+            return (String) result.get("workflow_id");
+        }
     }
 
     /**
      * Get workflow status
      */
     public WorkflowStatusResponse getStatus(String workflowId) throws IOException {
-        Response response = doRequest("GET", "/v1/workflows/" + workflowId, null);
-        return objectMapper.readValue(response.body().string(), WorkflowStatusResponse.class);
+        try (Response response = doRequest("GET", "/v1/workflows/" + workflowId, null)) {
+            ResponseBody body = response.body();
+            if (body == null) {
+                throw new IOException("Empty response body");
+            }
+            return objectMapper.readValue(body.string(), WorkflowStatusResponse.class);
+        }
     }
 
     /**
      * Resume an interrupted workflow
      */
     public String resume(String workflowId) throws IOException {
-        Response response = doRequest("POST", "/v1/workflows/" + workflowId + "/resume", null);
-        Map<String, Object> result = parseResponse(response);
-        return (String) result.get("status");
+        try (Response response = doRequest("POST", "/v1/workflows/" + workflowId + "/resume", null)) {
+            Map<String, Object> result = parseResponse(response);
+            return (String) result.get("status");
+        }
     }
 
     /**
      * Cancel a running workflow
      */
     public void cancel(String workflowId) throws IOException {
-        doRequest("POST", "/v1/workflows/" + workflowId + "/cancel", null);
+        try (Response response = doRequest("POST", "/v1/workflows/" + workflowId + "/cancel", null)) {
+            // Response consumed and closed by try-with-resources
+        }
     }
 
     /**
@@ -89,12 +98,13 @@ public class ContdClient {
      */
     @SuppressWarnings("unchecked")
     public List<SavepointInfo> getSavepoints(String workflowId) throws IOException {
-        Response response = doRequest("GET", "/v1/workflows/" + workflowId + "/savepoints", null);
-        Map<String, Object> result = parseResponse(response);
-        List<Map<String, Object>> savepoints = (List<Map<String, Object>>) result.get("savepoints");
-        return savepoints.stream()
-                .map(sp -> objectMapper.convertValue(sp, SavepointInfo.class))
-                .toList();
+        try (Response response = doRequest("GET", "/v1/workflows/" + workflowId + "/savepoints", null)) {
+            Map<String, Object> result = parseResponse(response);
+            List<Map<String, Object>> savepoints = (List<Map<String, Object>>) result.get("savepoints");
+            return savepoints.stream()
+                    .map(sp -> objectMapper.convertValue(sp, SavepointInfo.class))
+                    .toList();
+        }
     }
 
     /**
@@ -102,17 +112,23 @@ public class ContdClient {
      */
     public String timeTravel(String workflowId, String savepointId) throws IOException {
         Map<String, Object> body = Map.of("savepoint_id", savepointId);
-        Response response = doRequest("POST", "/v1/workflows/" + workflowId + "/time-travel", body);
-        Map<String, Object> result = parseResponse(response);
-        return (String) result.get("new_workflow_id");
+        try (Response response = doRequest("POST", "/v1/workflows/" + workflowId + "/time-travel", body)) {
+            Map<String, Object> result = parseResponse(response);
+            return (String) result.get("new_workflow_id");
+        }
     }
 
     /**
      * Health check
      */
     public HealthCheck health() throws IOException {
-        Response response = doRequest("GET", "/health", null);
-        return objectMapper.readValue(response.body().string(), HealthCheck.class);
+        try (Response response = doRequest("GET", "/health", null)) {
+            ResponseBody body = response.body();
+            if (body == null) {
+                throw new IOException("Empty response body");
+            }
+            return objectMapper.readValue(body.string(), HealthCheck.class);
+        }
     }
 
     private Response doRequest(String method, String path, Object body) throws IOException {
@@ -141,7 +157,11 @@ public class ContdClient {
 
     @SuppressWarnings("unchecked")
     private Map<String, Object> parseResponse(Response response) throws IOException {
-        return objectMapper.readValue(response.body().string(), Map.class);
+        ResponseBody body = response.body();
+        if (body == null) {
+            throw new IOException("Empty response body");
+        }
+        return objectMapper.readValue(body.string(), Map.class);
     }
 
     @SuppressWarnings("unchecked")

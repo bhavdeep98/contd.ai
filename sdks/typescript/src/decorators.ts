@@ -276,9 +276,9 @@ export function step(options: StepOptions = {}) {
           newState
         );
 
-        // Update context
+        // Update context state (setState already syncs stepCounter)
         ctx.setState(newState);
-        ctx.incrementStep();
+        // Note: Don't call incrementStep() here - setState already handles it
 
         // Checkpoint if configured
         if (config.checkpoint) {
