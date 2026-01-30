@@ -82,6 +82,12 @@ from .testing import (
 )
 from .registry import WorkflowRegistry
 
+# Context preservation types
+from contd.core.context_preservation import (
+    ContextHealth,
+    RestoredContext,
+)
+
 __all__ = [
     # Decorators
     "workflow",
@@ -118,6 +124,9 @@ __all__ = [
     "HealthCheck",
     "WorkflowConfigModel",
     "StepConfigModel",
+    # Context Preservation
+    "ContextHealth",
+    "RestoredContext",
     # Errors - Base
     "ContdError",
     # Errors - Workflow

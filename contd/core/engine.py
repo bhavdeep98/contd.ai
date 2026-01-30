@@ -114,6 +114,26 @@ class ExecutionEngine:
         """
         return self.recovery.restore(workflow_id, org_id)
 
+    def restore_with_context(self, workflow_id: str, org_id: str):
+        """
+        Restore workflow state AND reasoning context from persistence.
+        
+        Returns:
+            Tuple of (state, last_event_seq, context)
+            
+        The context includes:
+        - digest: Latest distilled reasoning context
+        - undigested: Raw chunks since last distill  
+        - annotations: Step-associated breadcrumbs
+        - digest_history: Full audit trail
+        - savepoints: Epistemic metadata
+        - Execution stats
+        
+        Use this when resuming LLM agent workflows to restore
+        not just data state but reasoning context.
+        """
+        return self.recovery.restore_with_context(workflow_id, org_id)
+
     def acquire_lease(
         self, workflow_id: str, owner_id: str, org_id: str = "default"
     ) -> Optional[Lease]:
