@@ -20,6 +20,7 @@ Reasoning models (DeepSeek R1, Claude Extended Thinking) generate massive thinki
 4. **Backtracking**: Time-travel to savepoints when reasoning hits dead ends
 5. **Human Review**: Visualize reasoning, approve/reject steps via web UI
 6. **Cost Tracking**: Monitor token usage across multi-hour runs
+7. **Code Execution**: Models can verify computations with Python/SageMath (NEW!)
 
 ## Architecture
 
@@ -117,8 +118,38 @@ export ANTHROPIC_API_KEY=your_key_here
 ### Solve a Single Problem
 
 ```bash
+# Basic usage (code execution enabled by default)
 python solver.py --problem "problems/number_theory_01.txt"
+
+# With SageMath for advanced algebraic geometry
+python solver.py --problem "problems/number_theory_01.txt" --enable-sagemath
+
+# Disable code execution (pure reasoning only)
+python solver.py --problem "problems/number_theory_01.txt" --no-code-execution
 ```
+
+### Code Execution Features
+
+The solver now supports **safe code execution** for mathematical verification:
+
+```python
+# Model can request computations using XML tags:
+<execute_python>
+from sympy import isprime, factorint
+print(f"17 is prime: {isprime(17)}")
+</execute_python>
+
+<compute>factorial(10)</compute>
+
+<execute_sage>
+# Advanced algebraic geometry (requires SageMath)
+K = GF(7)
+E = EllipticCurve(K, [1, 1])
+print(f"Order: {E.order()}")
+</execute_sage>
+```
+
+See [CODE_EXECUTION.md](CODE_EXECUTION.md) for full documentation.
 
 ### Run Benchmark
 

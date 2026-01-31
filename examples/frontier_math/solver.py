@@ -28,6 +28,8 @@ from reflection import (
     build_reflection_prompt,
     parse_reflection_response
 )
+from code_executor import ToolCallingExecutor, CodeExecutor
+from convergence import ConvergenceDetector
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -41,13 +43,44 @@ class FrontierMathSolver:
         model_config: Optional[ModelConfig] = None,
         solver_config: Optional[SolverConfig] = None,
         distill_fn=None,
-        reflection_interval: int = 10
+        reflection_interval: int = 10,
+        enable_code_execution: bool = True,
+        enable_sagemath: bool = False,
+        enable_convergence_detection: bool = True
     ):
         self.model_config = model_config or ModelConfig.from_env()
         self.solver_config = solver_config or SolverConfig.from_env()
         self.distill_fn = distill_fn or simple_math_distill
         self.model = create_model(self.model_config)
         self.reflection_manager = ReflectionManager(reflection_interval)
+        
+        # Initialize code executor
+        self.enable_code_execution = enable_code_execution
+        if enable_code_execution:
+            code_executor = CodeExecutor(
+                timeout=30,
+                enable_sagemath=enable_sagemath
+            )
+            self.tool_executor = ToolCallingExecutor(code_executor)
+            logger.info("✓ Code execution enabled (Python + SymPy)")
+            if enable_sagemath:
+                logger.info("✓ SageMath execution enabled")
+        else:
+            self.tool_executor = None
+            logger.info("✗ Code execution disabled")
+        
+        # Initialize convergence detector
+        self.enable_convergence_detection = enable_convergence_detection
+        if enable_convergence_detection:
+            self.convergence_detector = ConvergenceDetector(
+                window_size=5,
+                convergence_threshold=3,
+                oscillation_threshold=4
+            )
+            logger.info("✓ Convergence detection enabled")
+        else:
+            self.convergence_detector = None
+            logger.info("✗ Convergence detection disabled")
         
         logger.info(f"Initialized solver with {self.model_config.provider} / {self.model_config.model_name}")
         logger.info(f"Reflection enabled every {reflection_interval} steps")
@@ -162,6 +195,31 @@ class FrontierMathSolver:
                 # Keep only last 10 for memory efficiency
                 reasoning_history = reasoning_history[-10:]
             
+            # Track answer for convergence detection
+            if self.enable_convergence_detection and result.get('answer'):
+                self.convergence_detector.add_answer(result['answer'], step_num)
+                convergence_result = self.convergence_detector.check_convergence()
+                
+                # Log convergence status
+                if step_num % 3 == 0:  # Log every 3 steps
+                    logger.info(f"  Convergence: {self.convergence_detector.get_summary()}")
+                
+                # Check if we should stop due to convergence
+                if convergence_result['converged']:
+                    confidence = convergence_result['confidence']
+                    reason = convergence_result['reason']
+                    
+                    if confidence >= 0.8:
+                        logger.info(f"✅ Converged at step {step_num} ({reason}, {confidence:.0%} confidence)")
+                        return self._convergence_result(convergence_result, problem, step_num)
+                    elif confidence >= 0.6 and reason == "oscillating":
+                        logger.warning(f"⚠️  Oscillation detected at step {step_num}")
+                        logger.warning(f"   Pattern: {convergence_result['details']['oscillation_pattern']}")
+                        # Continue for a few more steps to see if it stabilizes
+                        if step_num >= config.max_steps * 0.7:  # After 70% of max steps
+                            logger.info(f"✅ Stopping due to persistent oscillation")
+                            return self._convergence_result(convergence_result, problem, step_num)
+            
             # Check if we found an answer
             if self._is_answer(result):
                 logger.info(f"✅ Solution found at step {step_num}")
@@ -196,12 +254,53 @@ class FrontierMathSolver:
         # Build prompt
         prompt = self._build_prompt(problem, context, step_num)
         
+        # Add tool instructions if code execution is enabled
+        if self.enable_code_execution:
+            prompt += self._get_tool_instructions()
+        
         # Generate with model
         try:
             response: ReasoningResponse = model.generate(prompt, context)
+            
+            # FIX: Validate response - detect empty answers
+            if response.thinking and not response.answer:
+                logger.warning(f"⚠️  Empty answer at step {step_num}!")
+                logger.warning(f"   Thinking: {len(response.thinking)} chars")
+                logger.warning(f"   Answer: {len(response.answer)} chars")
+                logger.warning(f"   Using thinking as fallback answer")
+                # Use thinking as answer if answer is empty
+                response.answer = response.thinking
+            
+            # Check if both are empty (critical error)
+            if not response.thinking and not response.answer:
+                logger.error(f"❌ Both thinking and answer are empty at step {step_num}!")
+                return {
+                    "error": "Empty response from model",
+                    "step": step_num,
+                    "thinking": "",
+                    "answer": "Model returned empty response",
+                    "confidence": 0.0
+                }
+                
         except Exception as e:
             logger.error(f"Model generation failed: {e}")
             return {"error": str(e), "step": step_num}
+        
+        # Check if model wants to execute code
+        tool_results = []
+        if self.enable_code_execution:
+            tool_results = self._handle_tool_calls(response.answer)
+            
+            # If tools were called, give model the results and continue
+            if tool_results:
+                logger.info(f"  Executed {len(tool_results)} tool calls")
+                
+                # Add tool results to context for next iteration
+                context['tool_results'] = tool_results
+                
+                # Ingest tool results into context
+                for tool_result in tool_results:
+                    ctx.ingest(f"[TOOL: {tool_result['tool']}]\n{tool_result['result']}")
         
         # Capture thinking tokens
         if response.thinking:
@@ -226,7 +325,8 @@ class FrontierMathSolver:
             "answer": response.answer,
             "confidence": response.confidence,
             "decision": decision,
-            "metadata": response.metadata
+            "metadata": response.metadata,
+            "tool_results": tool_results
         }
     
     @step(StepConfig(checkpoint=True))
@@ -269,6 +369,13 @@ class FrontierMathSolver:
         # Generate reflection
         try:
             response: ReasoningResponse = model.generate(prompt, context)
+            
+            # FIX: Validate reflection response
+            if response.thinking and not response.answer:
+                logger.warning(f"⚠️  Empty reflection answer at step {step_num}")
+                logger.warning(f"   Using thinking as fallback")
+                response.answer = response.thinking
+                
         except Exception as e:
             logger.error(f"Reflection failed: {e}")
             return {"error": str(e), "step": step_num}
@@ -335,6 +442,15 @@ Problem:
 
 """
         
+        # Add tool results from previous step
+        if "tool_results" in context and context["tool_results"]:
+            prompt += "Previous computation results:\n"
+            for tool_result in context["tool_results"]:
+                tool_name = tool_result.get("tool", "unknown")
+                result = tool_result.get("result", "")
+                prompt += f"- {tool_name}: {result}\n"
+            prompt += "\n"
+        
         # Add reflection context if available
         if "last_reflection" in context:
             refl = context["last_reflection"]
@@ -371,6 +487,104 @@ Problem:
             context["annotations"] = restored["annotations"]
         
         return context
+    
+    def _get_tool_instructions(self) -> str:
+        """Get instructions for using code execution tools."""
+        return """
+
+AVAILABLE TOOLS:
+You can execute Python code to verify calculations. Use the following format:
+
+<execute_python>
+# Your Python code here
+# Common imports (numpy, sympy, math) are pre-loaded
+result = ...
+print(result)
+</execute_python>
+
+For SageMath computations (algebraic geometry, Brauer groups, etc.):
+<execute_sage>
+# Your SageMath code here
+</execute_sage>
+
+For quick calculations:
+<compute>expression</compute>
+
+Example:
+<execute_python>
+from sympy import *
+x = Symbol('x')
+result = integrate(x**2, x)
+print(f"Integral: {result}")
+</execute_python>
+
+Use these tools to verify your mathematical reasoning with actual computations.
+"""
+    
+    def _handle_tool_calls(self, answer: str) -> List[Dict[str, Any]]:
+        """
+        Parse and execute tool calls from model response.
+        
+        Args:
+            answer: Model's answer text
+            
+        Returns:
+            List of tool execution results
+        """
+        if not self.tool_executor:
+            return []
+        
+        results = []
+        
+        # Parse Python execution requests
+        import re
+        
+        # Match <execute_python>...</execute_python>
+        python_pattern = r'<execute_python>(.*?)</execute_python>'
+        python_matches = re.findall(python_pattern, answer, re.DOTALL)
+        
+        for code in python_matches:
+            code = code.strip()
+            logger.info(f"  Executing Python code ({len(code)} chars)")
+            result = self.tool_executor.run_python(code)
+            results.append({
+                "tool": "python",
+                "code": code,
+                "result": result
+            })
+            logger.info(f"  Result: {result[:100]}...")
+        
+        # Match <execute_sage>...</execute_sage>
+        sage_pattern = r'<execute_sage>(.*?)</execute_sage>'
+        sage_matches = re.findall(sage_pattern, answer, re.DOTALL)
+        
+        for code in sage_matches:
+            code = code.strip()
+            logger.info(f"  Executing SageMath code ({len(code)} chars)")
+            result = self.tool_executor.run_sage(code)
+            results.append({
+                "tool": "sage",
+                "code": code,
+                "result": result
+            })
+            logger.info(f"  Result: {result[:100]}...")
+        
+        # Match <compute>...</compute>
+        compute_pattern = r'<compute>(.*?)</compute>'
+        compute_matches = re.findall(compute_pattern, answer, re.DOTALL)
+        
+        for expr in compute_matches:
+            expr = expr.strip()
+            logger.info(f"  Computing: {expr}")
+            result = self.tool_executor.compute_expression(expr)
+            results.append({
+                "tool": "compute",
+                "expression": expr,
+                "result": result
+            })
+            logger.info(f"  Result: {result[:100]}...")
+        
+        return results
     
     def _extract_decision(self, answer: str) -> str:
         """Extract key decision from answer."""
@@ -431,6 +645,27 @@ Problem:
             "verified": False,  # Would implement actual verification
         }
     
+    def _convergence_result(self, convergence_result: Dict, problem: str, steps: int) -> Dict:
+        """Return result for convergence."""
+        ctx = ExecutionContext.current()
+        
+        # Get final context
+        health = ctx.context_health()
+        tracker = ctx._token_tracker if hasattr(ctx, '_token_tracker') else None
+        
+        return {
+            "status": "converged",
+            "answer": convergence_result.get("final_answer"),
+            "confidence": convergence_result.get("confidence", 0.0),
+            "convergence_reason": convergence_result.get("reason"),
+            "convergence_details": convergence_result.get("details"),
+            "steps": steps,
+            "reasoning_chars": health.buffer_bytes if health else 0,
+            "digests_created": len(ctx.ledger.digests) if hasattr(ctx, 'ledger') else 0,
+            "cost": tracker.total_cost_dollars if tracker else 0.0,
+            "verified": False,
+        }
+    
     def _timeout_result(self, context: Dict, steps: int) -> Dict:
         """Return result for timeout."""
         return {
@@ -474,6 +709,9 @@ def main():
     parser.add_argument("--model", type=str, help="Model provider (ollama, deepseek-api, claude)")
     parser.add_argument("--max-steps", type=int, help="Maximum reasoning steps")
     parser.add_argument("--cost-budget", type=float, help="Cost budget in USD")
+    parser.add_argument("--no-code-execution", action="store_true", help="Disable code execution")
+    parser.add_argument("--enable-sagemath", action="store_true", help="Enable SageMath execution")
+    parser.add_argument("--no-convergence-detection", action="store_true", help="Disable convergence detection")
     
     args = parser.parse_args()
     
@@ -503,7 +741,10 @@ def main():
     solver = FrontierMathSolver(
         model_config,
         solver_config,
-        reflection_interval=solver_config.reflection_interval
+        reflection_interval=solver_config.reflection_interval,
+        enable_code_execution=not args.no_code_execution,
+        enable_sagemath=args.enable_sagemath,
+        enable_convergence_detection=not args.no_convergence_detection
     )
     result = solver.solve(problem, workflow_id=args.resume)
     
@@ -512,11 +753,13 @@ def main():
     print("RESULT")
     print("=" * 60)
     print(f"Status: {result['status']}")
-    if result['status'] == 'solved':
+    if result['status'] in ['solved', 'converged']:
         print(f"Answer: {result['answer']}")
         print(f"Confidence: {result['confidence']:.2f}")
         print(f"Steps: {result['steps']}")
         print(f"Cost: ${result.get('cost', 0):.2f}")
+        if result['status'] == 'converged':
+            print(f"Convergence Reason: {result.get('convergence_reason')}")
     print("=" * 60)
 
 

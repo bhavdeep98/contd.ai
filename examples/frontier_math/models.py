@@ -119,6 +119,12 @@ class DeepSeekOllamaModel(ReasoningModel):
             end = response.index("</think>")
             thinking = response[start:end].strip()
             answer = response[end + 8:].strip()
+            
+            # FIX: If answer is empty but thinking exists, use thinking as fallback
+            if thinking and not answer:
+                logger.warning("Empty answer after <think> tags - using thinking as answer")
+                answer = thinking
+            
             return thinking, answer
         
         # Alternative: Check if response has clear reasoning structure

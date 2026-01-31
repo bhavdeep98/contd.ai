@@ -1,0 +1,33 @@
+# LLM Guardrail Rules - Standard Configuration
+rules:
+  - type: dependencies
+    description: "Control dependencies"
+    forbidden:
+      - moment
+      - jquery
+
+  - type: content
+    description: "Prevent debug and unsafe code"
+    forbid:
+      - console.log
+      - debugger
+      - alert
+    patterns:
+      deny:
+        - "eval\\("
+        - "Function\\("
+
+  - type: refactor
+    description: "Prevent unwanted refactoring"
+    forbid:
+      - variable_renames
+      - add_error_handling
+
+  - type: threshold
+    description: "Limit change scope"
+    max_lines_changed: 50
+    require_approval: true
+
+global:
+  require_approval_for_all: true
+  log_all_interactions: true

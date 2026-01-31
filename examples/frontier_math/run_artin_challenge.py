@@ -180,8 +180,11 @@ Continue your reasoning. Build on what you've done."""
                 digest_history.append(digest)
                 print(f"    Distilled {len(recent_reasoning)} steps into digest")
                 print(f"       Proven facts: {len(digest.get('proven_facts', []))}")
+                for fact in digest.get('proven_facts', [])[:3]:
+                    print(f"         - {fact[:100]}")
                 print(f"       Failed approaches: {len(digest.get('failed_approaches', []))}")
                 print(f"       Key insights: {len(digest.get('key_insights', []))}")
+                print(f"       Strategy: {digest.get('current_strategy', 'N/A')[:100]}")
             
             # Reflection
             if step % solver_config.reflection_interval == 0:
